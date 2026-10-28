@@ -14,7 +14,7 @@ class RfscanPlayer extends AudioWorkletProcessor {
       if (this.fill + n > sampleRate * 1.5) { const drop = this.fill + n - sampleRate; this.r = (this.r + drop) % this.cap; this.fill -= drop; }
       for (let k = 0; k < n; k++) { this.L[this.w] = a[2 * k]; this.R[this.w] = a[2 * k + 1]; this.w = (this.w + 1) % this.cap; }
       this.fill += n;
-      if (!this.primed && this.fill >= sampleRate * 0.2) this.primed = true;
+      if (!this.primed && this.fill >= sampleRate * 0.3) this.primed = true;
     };
   }
   process(inputs, outputs) {

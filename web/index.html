@@ -1344,7 +1344,7 @@ async function audioEnsureOutput() {
   audio.ctx = new AudioContext({ sampleRate: 48000 });
   await audio.ctx.audioWorklet.addModule('audio-worklet.js');
   audio.node = new AudioWorkletNode(audio.ctx, 'rfscan-player', { outputChannelCount: [2] });
-  audio.node.port.onmessage = e => { audio.fill = e.data.fill; audio.underruns = e.data.underruns; };
+  audio.node.port.onmessage = e => { audio.fill = e.data.fill; audio.underruns = e.data.underruns; if (audio.worker && audio.running) audio.worker.postMessage({ cmd: 'fill', fill: e.data.fill }); };
   audio.node.connect(audio.ctx.destination);
   audio.node.port.postMessage({ gain: +$('#aVol').value / 100 });
 }
@@ -1391,7 +1391,7 @@ async function audioStart(fileSrc) {
   audio.worker.postMessage({ cmd: 'start', rate: audio.rate, center: audio.center, freq: f, mode, squelch: +$('#aSq').value, scan: scanCfg() });
   $('#aBankWrap').style.display = scanCfg() ? 'block' : 'none'; audio.bank = null; $('#aLock').textContent = '';
   audio.worker.postMessage({ cmd: 'stereo', on: $('#aStereo').checked });
-  audio.running = true; audio.hist.fill(0); audio.nHist = 0;
+  audio.running = true; audio.hist.fill(0); audio.nHist = 0; audio.agcSettled = false; audio.agcQuiet = 0; audio.holdAgc = 0;
   $('#aStart').textContent = 'Stop'; $('#aRds').textContent = ''; audio.status = {};
   if (audio.source === 'device') {
     hrf.skip = READERS; hrf.onData = audioData;
@@ -1426,14 +1426,17 @@ async function audioTune(f, force) {
   await audioStart();
 }
 async function applyAudioGains(g) { await hrf.setLna(g.lna); await hrf.setVga(g.vga); await hrf.setAmp(g.amp); }
+// gain changes click in the audio, so: settle quickly after (re)tuning, then only react to clipping
 async function audioAgc() {
   if (audio.source !== 'device' || audio.holdAgc-- > 0) return;
   const h = audio.hist; let tot = 0; for (const v of h) tot += v; if (tot < 50000) return;
   let cum = 0, p = 0; for (let i = 0; i < 129; i++) { cum += h[i]; if (cum >= 0.9999 * tot) { p = i; break; } }
   const clip = (h[127] + h[128]) / tot; h.fill(0);
   let d = 0;
-  if (clip > 1e-5) d = -6; else if (p > 100) d = -Math.max(2, 20 * Math.log10(p / 60)); else if (p < 30) d = Math.min(10, 20 * Math.log10(60 / Math.max(p, 1)));
-  if (Math.abs(d) < 2) return;
+  if (clip > 1e-5) d = -6;
+  else if (!audio.agcSettled) { if (p > 100) d = -Math.max(2, 20 * Math.log10(p / 60)); else if (p < 30) d = Math.min(10, 20 * Math.log10(60 / Math.max(p, 1))); }
+  if (Math.abs(d) < 2) { if (++audio.agcQuiet >= 3) audio.agcSettled = true; return; }
+  audio.agcQuiet = 0;
   const g = splitGain(Math.round(totalGain(audio.gain) + d));
   if (totalGain(g) === totalGain(audio.gain)) return;
   audio.gain = g; audio.holdAgc = 3; await applyAudioGains(g);
@@ -1445,7 +1448,7 @@ function audioReadout() {
   if (s.bank && s.freq) audio.freq = s.freq;
   const parts = [`<span>${audio.source === 'file' ? 'file ' + audio.file.name : 'live'} · <b>${fmtHz(audio.freq)}</b> ${audio.mode.toUpperCase()}</span>`,
     `<span>signal <b>${(s.level || -100).toFixed(0)} dB</b>${s.open === false ? ' <span class="warn">squelched</span>' : ''}</span>`];
-  if (audio.mode === 'wfm') parts.push(`<span>${s.stereo ? '<b class="ok">stereo</b>' : 'mono'} (pilot ${((s.pilot || 0) * 100).toFixed(1)})</span>`);
+  if (audio.mode === 'wfm') parts.push(`<span>${s.stereo ? `<b class="ok">stereo ${Math.round((s.blend || 0) * 100)}%</b>` : 'mono'} (pilot ${((s.pilot || 0) * 100).toFixed(1)}, P/N ${(s.pnr || 0).toFixed(0)} dB)</span>`);
   parts.push(`<span>buffer <b>${(audio.fill || 0).toFixed(2)} s</b>${audio.underruns ? ` (${audio.underruns} underruns)` : ''}</span>`, `<span>DSP <b>${((s.cpu || 0) * 100).toFixed(0)}%</b> of real time</span>`);
   if (audio.source === 'device') parts.push(`<span>gain ${totalGain(g)} dB</span>`);
   $('#aRead').innerHTML = parts.join('');
@@ -1492,7 +1495,7 @@ async function audioHop() {
     hrf.onData = null; await hrf.setMode(MODE.OFF); await hrf.setFreq(audio.center);
     audio.worker.postMessage({ cmd: 'start', rate: audio.rate, center: audio.center, freq: audio.center + 1e6, mode: audio.mode, squelch: +$('#aSq').value, scan: scanCfg() });
     audio.worker.postMessage({ cmd: 'stereo', on: $('#aStereo').checked });
-    audio.spectrum = null; hrf.skip = READERS; hrf.onData = audioData; await hrf.setMode(MODE.RX);
+    audio.spectrum = null; audio.agcSettled = false; audio.agcQuiet = 0; hrf.skip = READERS; hrf.onData = audioData; await hrf.setMode(MODE.RX);
   } finally { audio.hopping = false; }
 }
 $('#aBank').onclick = e => {

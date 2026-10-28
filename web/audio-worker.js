@@ -72,16 +72,19 @@ class Biquad {        // RBJ band-pass (constant skirt gain)
 }
 // linear-interpolation resampler (input is already lowpassed well below its Nyquist)
 class Resampler {
-  constructor(inRate, outRate) { this.step = inRate / outRate; this.pos = 0; this.last = 0; }
+  constructor(inRate, outRate) { this.base = inRate / outRate; this.step = this.base; this.pos = 0; this.last = 0; this.buf = new Float32Array(8192); }
+  trim(ppm) { this.step = this.base * (1 + ppm * 1e-6); }     // +ppm = consume input faster = fewer output samples
   process(x) {
-    const out = []; let pos = this.pos;
+    const need = Math.ceil(x.length / this.step) + 2;
+    if (this.buf.length < need) this.buf = new Float32Array(need * 2);
+    const out = this.buf; let pos = this.pos, n = 0;
     while (pos < x.length) {
       const i = Math.floor(pos), f = pos - i;
-      const a = i < 0 ? this.last : x[i], b = x[Math.min(i + 1, x.length - 1)];
-      out.push(a + (b - a) * f); pos += this.step;
+      const a = x[i], b = x[Math.min(i + 1, x.length - 1)];
+      out[n++] = a + (b - a) * f; pos += this.step;
     }
     this.pos = pos - x.length; this.last = x[x.length - 1];
-    return Float32Array.from(out);
+    return out.slice(0, n);
   }
 }
 
@@ -151,6 +154,8 @@ class WfmDemod {
     this.devScale = fs / (2 * Math.PI * 75000);      // rad/sample -> fraction of 75 kHz deviation
     this.rds = new RdsDecoder(fs);
     this.stereoOn = true;
+    // noise gauge: MPX power around 80 kHz holds no programme, only demodulated noise
+    this.noiseBpf = new Biquad(80000, 4, fs); this.noise = 1e-4; this.blend = 0;
   }
   process(I, Q) {
     const m = this.disc.process(I, Q), n = m.length, s = this.devScale;
@@ -159,6 +164,7 @@ class WfmDemod {
     for (let k = 0; k < n; k++) {
       const x = m[k] * s; m[k] = x;
       const pil = this.pilotBpf.run(x);
+      const nz = this.noiseBpf.run(x); this.noise += (nz * nz - this.noise) * 0.0005;
       const e = pil * -Math.sin(ph);
       lock += (pil * Math.cos(ph) - lock) * 0.0005;
       fr += p.beta * e; ph += fr + p.alpha * e;
@@ -168,20 +174,28 @@ class WfmDemod {
     }
     p.phase = ph; p.freq = fr; p.lock = lock;
     // pilot is ~9% of deviation -> lock ~0.045 when locked; the band-pass halves it roughly
-    const stereo = this.stereoOn && lock > 0.012;
+    const locked = this.stereoOn && lock > 0.012;
+    // stereo blend from pilot-to-noise ratio: full stereo only on strong signals, mono when weak
+    this.pnr = 10 * Math.log10((lock * lock) / (this.noise + 1e-12) + 1e-12);
+    // gauge calibration: a station at FM threshold (~11 dB CNR) reads about -5 dB, a clean one 10-12 dB
+    const target = locked ? Math.max(0, Math.min(1, (this.pnr - 2) / 8)) : 0;
+    this.blend += (target - this.blend) * 0.2;
+    const stereo = this.blend > 0.05, g = this.blend;
     const mono = this.lpfM.process(m), diff = this.lpfS.process(lr);
     const L = new Float32Array(mono.length), R = new Float32Array(mono.length);
     const dl = this.deemL, dr = this.deemR;
     for (let k = 0; k < mono.length; k++) {
-      const a = stereo ? (mono[k] + diff[k]) : mono[k], b = stereo ? (mono[k] - diff[k]) : mono[k];
+      const a = mono[k] + g * diff[k], b = mono[k] - g * diff[k];
       dl.y += (a - dl.y) * (1 - dl.a); dr.y += (b - dr.y) * (1 - dr.a);
-      L[k] = dl.y; R[k] = dr.y;
+      L[k] = softLimit(dl.y * 0.8); R[k] = softLimit(dr.y * 0.8);
     }
     this.rds.process(rdsI, rdsQ);
     return { L: this.rsL.process(L), R: this.rsR.process(R), stereo, pilot: lock };
   }
-  status() { return { stereo: this.pll.lock > 0.012, pilot: this.pll.lock, rds: this.rds.status() }; }
+  status() { return { stereo: this.blend > 0.05, blend: this.blend, pnr: this.pnr, pilot: this.pll.lock, rds: this.rds.status() }; }
 }
+// gentle knee above 0.7, never exceeds 1.0
+function softLimit(v) { const a = Math.abs(v); if (a <= 0.7) return v; const y = 0.7 + 0.3 * Math.tanh((a - 0.7) / 0.3); return v < 0 ? -y : y; }
 
 // NFM voice: 12.5/25 kHz channel, +-2.5/5 kHz deviation
 class NfmDemod {
@@ -199,6 +213,7 @@ class NfmDemod {
     const d = this.disc.process(I, Q);
     for (let k = 0; k < d.length; k++) { d[k] *= this.devScale; const y = this.deem.y + (d[k] - this.deem.y) * (1 - this.deem.a); this.deem.y = y; d[k] = y; }
     const a = this.rs.process(this.lpf.process(d));
+    for (let k = 0; k < a.length; k++) a[k] = softLimit(a[k] * 0.7);
     return { L: a, R: a, stereo: false };
   }
   status() { return {}; }
@@ -220,6 +235,7 @@ class AmDemod {
       const pk = Math.abs(e[k]); if (pk > 0.9) this.gain *= 0.99; else if (this.gain < 50) this.gain *= 1.00002;
     }
     const a = this.rs.process(this.lpf.process(e));
+    for (let k = 0; k < a.length; k++) a[k] = softLimit(a[k]);
     return { L: a, R: a, stereo: false };
   }
   status() { return {}; }
@@ -449,7 +465,7 @@ class ChannelBank {
 class Receiver {
   constructor(cfg) {
     this.rate = cfg.rate; this.center = cfg.center; this.mode = cfg.mode || 'wfm'; this.freq = cfg.freq;
-    const bw = this.mode === 'wfm' ? 220e3 : this.mode === 'nfm' ? 40e3 : 30e3;
+    const bw = this.mode === 'wfm' ? 180e3 : this.mode === 'nfm' ? 40e3 : 30e3;
     this.fe = new FrontEnd(this.rate, this.freq - this.center, bw);
     const fs = this.fe.chanRate;
     this.demod = this.mode === 'wfm' ? new WfmDemod(fs) : this.mode === 'nfm' ? new NfmDemod(fs, cfg.nfmBw || 12.5e3) : new AmDemod(fs);
@@ -503,6 +519,11 @@ if (typeof importScripts === 'function') {
     if (!rx) return;
     if (m.cmd === 'tune') { rx.tune(m.freq); return; }
     if (m.cmd === 'squelch') { rx.squelchDb = m.db; return; }
+    if (m.cmd === 'fill') {        // buffer above target -> make fewer samples (positive trim), below -> more
+      const ppm = Math.max(-3000, Math.min(3000, (m.fill - 0.3) * 4000));
+      for (const r of [rx.demod.rsL, rx.demod.rsR, rx.demod.rs]) if (r) r.trim(ppm);
+      return;
+    }
     if (m.cmd === 'bank' && rx.bank) { if (m.thresholdDb !== undefined) rx.bank.thresholdDb = m.thresholdDb; if (m.holdMs !== undefined) rx.bank.holdMs = m.holdMs; if (m.priority !== undefined) rx.bank.priority = m.priority; if (m.lockouts) rx.bank.lockouts = new Set(m.lockouts); return; }
     if (m.cmd === 'stereo') { if (rx.demod.stereoOn !== undefined) rx.demod.stereoOn = m.on; return; }
     if (m.cmd === 'iq') {

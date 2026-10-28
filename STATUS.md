@@ -72,6 +72,10 @@ Serve: `python3 -m http.server 8090 --bind 127.0.0.1 --directory web`, open http
   priority, lockouts, events. Page hops 10 MHz windows when idle. Tests: `tests/web/make_pmr_synth.py` +
   `tests/web/test_scanner.js` (locks ch3/8/14/3 as scripted); live PMR446 quiet (all channels within ±4 dB of floor);
   FM-band scanner auto-locks on 102.7 MHz.
+  Audio quality pass (same day, after "crackle" report): stereo blend from a pilot-to-noise gauge (80 kHz MPX band;
+  mono below ~2 dB, full stereo above ~10 dB on that gauge), 180 kHz IF, AGC frozen once settled (gain steps click),
+  player-fill -> resampler rate trim (holds 0.3 s), soft limiter, preallocated resampler. Offline on the 102.7 MHz
+  recording: impulses 89/s -> 0.3/s; live: buffer 0.29 s steady, 0 underruns over 35 s. Threshold hiss on weak stations remains.
   Next: live P2000 feed (stream into multimon-ng WASM), CTCSS display, per-transmission recording.
   Python changes for Pyodide: `_ofdm_util.pmap` (no threads on emscripten), `recording.iq` reads via fromfile (no mmap).
 * Scan waterfall is 2048 columns over the full range, so it is coarse when zoomed.
