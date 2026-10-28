@@ -30,11 +30,14 @@ SigMF files works in any browser; nothing is uploaded.
 | ![Live spectrum and waterfall at 935–945 MHz](docs/screenshots/live-gsm900.jpg) **Live:** spectrum, waterfall and auto-gain; GSM carriers and an LTE cell at 900 MHz | ![Full 1–6000 MHz sweep](docs/screenshots/scan-full.jpg) **Scan:** 1–6000 MHz sweep with detected regions, band labels and a sortable table |
 | ![2.4 GHz zoom](docs/screenshots/scan-zoom-2400.jpg) **Scan, zoomed:** Wi-Fi and BLE around 2.4 GHz; green = detected regions | ![Decodes tab](docs/screenshots/decodes.jpg) **Decodes:** one click on the 900 MHz band gives 3 GSM cells and an LTE MIB with CRC |
 | ![Offline analysis](docs/screenshots/offline-2290.jpg) **Offline IQ:** a 120 MB SigMF file analysed in the browser in 0.7 s | ![Offline zoom](docs/screenshots/offline-zoom.jpg) **Offline, zoomed:** box-select on the waterfall re-analyses just that time span |
-| ![Audio tab](docs/screenshots/audio-fm-rds.jpg) **Audio:** live FM stereo with RDS (station name, PI, programme type, RadioText), NFM and AM, band scan for stations; plays recordings too | |
+| ![Audio tab](docs/screenshots/audio-fm-rds.jpg) **Audio:** live FM stereo with RDS (station name, PI, programme type, RadioText), NFM and AM, band scan for stations; plays recordings too | ![Channel scanner](docs/screenshots/scanner-pmr446.jpg) **Scanner:** squelch on every channel of the band at once, auto-lock on the active one, hold, priority, lockouts and a log of transmissions |
 
 The **Audio** tab is a receiver: FM broadcast in stereo with RDS, narrowband FM (PMR446, amateur)
 and AM, with presets, squelch, a band scan that lists the stations it hears, and playback of any
-loaded recording. The DSP (`web/audio-worker.js`) is plain JavaScript in a worker and uses about
+loaded recording. Its **scanner** mode watches every channel of the preset's grid in the captured
+10 MHz at once (one FFT per block, a local noise floor per channel), plays whichever channel opens
+its squelch, holds after it closes, honours a priority channel and lockouts, logs each transmission,
+and hops the radio between 10 MHz windows for bands wider than one capture. The DSP (`web/audio-worker.js`) is plain JavaScript in a worker and uses about
 a quarter of one core at 10 Msps; audio goes out through an AudioWorklet.
 
 Source is in `web/`. `web/build.sh` refreshes the Python copy in `web/py` after changes to

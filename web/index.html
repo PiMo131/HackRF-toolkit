@@ -148,12 +148,25 @@ td button{padding:1px 8px;font-size:12px}
     <label>Squelch dB<input id="aSq" type="range" min="-80" max="0" value="-80" style="width:120px"></label>
     <label class="chk"><input id="aStereo" type="checkbox" checked>Stereo</label>
   </div>
+  <div class="row">
+    <label class="chk"><input id="aScanOn" type="checkbox">Scanner: auto-lock on active channels</label>
+    <label>Threshold dB over floor<input id="aThr" type="range" min="6" max="30" value="10" style="width:120px"><span id="aThrV" class="note">10</span></label>
+    <label>Hold s<input id="aHold" type="number" min="0.3" max="10" step="0.1" value="2" style="width:60px"></label>
+    <label>Priority MHz<input id="aPrio" type="number" step="0.0001" placeholder="none" style="width:110px"></label>
+    <span id="aLock" class="readout" style="font-size:15px;margin:0"></span>
+    <button id="aLogClear" class="sec">Clear log</button>
+  </div>
   <div id="aOptin" class="note" style="display:none;margin-bottom:8px"><label class="chk"><input id="aOptinChk" type="checkbox">I understand that in Belgium listening to aviation, maritime and emergency-service frequencies without the parties' consent is not permitted (BIPT); these presets are my own choice.</label></div>
   <div class="readout" id="aRead">Listen plays the demodulated audio in the browser. FM broadcast gives stereo and RDS; "Find stations" sweeps the band.</div>
   <div id="aRds" class="readout" style="font-size:15px"></div>
   <div id="aStations" class="row"></div>
   <div class="hint">Click in the spectrum to tune within the captured 10 MHz; the highlighted strip is the channel being played.</div>
   <div class="plotwrap"><canvas id="aSpec" class="spec" style="height:180px"></canvas><div class="sel"></div><div class="hover"></div></div>
+  <div id="aBankWrap" style="display:none">
+    <div class="hint">Channel bank: bar height = dB over that channel's own noise floor; green = squelch open, orange = being played, red = locked out (click a bar to toggle).</div>
+    <div class="plotwrap"><canvas id="aBank" style="height:120px"></canvas><div class="hover"></div></div>
+    <div class="tablewrap" style="max-height:220px"><table id="aLog"><thead><tr><th>Time</th><th>Channel</th><th>Duration</th><th>Peak over floor</th></tr></thead><tbody></tbody></table></div>
+  </div>
 </section>
 
 <section id="decodes">
@@ -1302,7 +1315,7 @@ const PRESETS = [
   { name: 'Marine VHF 156–162 — opt-in', mode: 'nfm', lo: 156e6, hi: 162.05e6, step: 25e3, start: 156.8e6, optin: true },
   { name: 'Free tuning', mode: 'nfm', lo: 1e6, hi: 6000e6, step: 12.5e3, start: 433.92e6 },
 ];
-const audio = { running: false, source: null, worker: null, ctx: null, node: null, center: 0, rate: AUDIO_RATE_DEV, freq: 100e6, mode: 'wfm',
+const audio = { lockouts: new Set(), win: 0, running: false, source: null, worker: null, ctx: null, node: null, center: 0, rate: AUDIO_RATE_DEV, freq: 100e6, mode: 'wfm',
   preset: PRESETS[0], gain: { amp: 0, lna: 24, vga: 20 }, hist: new Float64Array(129), nHist: 0, holdAgc: 0, spectrum: null, stations: [], file: null, status: {}, fill: 0 };
 
 for (const [i, p] of PRESETS.entries()) { const o = document.createElement('option'); o.value = i; o.textContent = p.name; $('#aPreset').append(o); }
@@ -1322,7 +1335,7 @@ function audioEnsureWorker() {
   audio.worker.onmessage = e => {
     const m = e.data;
     if (m.audio) { if (audio.node) audio.node.port.postMessage({ audio: m.audio }, [m.audio]); return; }
-    if (m.status) { audio.status = m.status; audioReadout(); }
+    if (m.status) { audio.status = m.status; audioReadout(); if (m.status.bank) audioBank(m.status.bank); }
     if (m.spectrum) { audio.spectrum = m.spectrum; audioDraw(); }
   };
 }
@@ -1336,7 +1349,24 @@ async function audioEnsureOutput() {
   audio.node.port.postMessage({ gain: +$('#aVol').value / 100 });
 }
 // pick a capture centre that keeps the station off the DC spike and inside the band
-function audioCentreFor(f) { return f + 1.5e6; }
+function audioCentreFor(f) {
+  if (!$('#aScanOn').checked) return f + 1.5e6;
+  const p = audio.preset, span = AUDIO_RATE_DEV * 0.84;
+  if (p.hi - p.lo <= span / 2 - 0.1e6) return p.lo - 0.2e6;                // whole band above the DC spike
+  const w = audioWindows(); audio.win = Math.max(0, w.findIndex(c => Math.abs(f - c) <= span / 2));
+  return w[audio.win] || w[0];
+}
+function audioWindows() {
+  const p = audio.preset, span = AUDIO_RATE_DEV * 0.84, out = [];
+  if (p.hi - p.lo <= span / 2 - 0.1e6) return [p.lo - 0.2e6];
+  for (let c = p.lo + span / 2; c - span / 2 < p.hi; c += span) out.push(c);
+  return out;
+}
+function scanCfg() {
+  if (!$('#aScanOn').checked) return null;
+  const p = audio.preset, prio = +$('#aPrio').value;
+  return { lo: p.lo, hi: p.hi, step: p.step, thresholdDb: +$('#aThr').value, holdMs: +$('#aHold').value * 1000, priority: prio > 0 ? prio * 1e6 : null, lockouts: [...audio.lockouts] };
+}
 function audioNeedsRetune(f) { const off = f - audio.center; return Math.abs(off) > audio.rate * 0.43 || Math.abs(off) < 250e3; }
 
 // start listening from the HackRF (source 'device') or from a loaded recording (source 'file')
@@ -1358,7 +1388,8 @@ async function audioStart(fileSrc) {
     await hrf.setSampleRate(audio.rate); await hrf.setFreq(audio.center);
     await applyAudioGains(audio.gain);
   }
-  audio.worker.postMessage({ cmd: 'start', rate: audio.rate, center: audio.center, freq: f, mode, squelch: +$('#aSq').value });
+  audio.worker.postMessage({ cmd: 'start', rate: audio.rate, center: audio.center, freq: f, mode, squelch: +$('#aSq').value, scan: scanCfg() });
+  $('#aBankWrap').style.display = scanCfg() ? 'block' : 'none'; audio.bank = null; $('#aLock').textContent = '';
   audio.worker.postMessage({ cmd: 'stereo', on: $('#aStereo').checked });
   audio.running = true; audio.hist.fill(0); audio.nHist = 0;
   $('#aStart').textContent = 'Stop'; $('#aRds').textContent = ''; audio.status = {};
@@ -1411,6 +1442,7 @@ function audioMsg(t, cls = '') { $('#aRead').innerHTML = `<span class="${cls}">$
 function audioReadout() {
   const s = audio.status, g = audio.gain;
   audioAgc();
+  if (s.bank && s.freq) audio.freq = s.freq;
   const parts = [`<span>${audio.source === 'file' ? 'file ' + audio.file.name : 'live'} · <b>${fmtHz(audio.freq)}</b> ${audio.mode.toUpperCase()}</span>`,
     `<span>signal <b>${(s.level || -100).toFixed(0)} dB</b>${s.open === false ? ' <span class="warn">squelched</span>' : ''}</span>`];
   if (audio.mode === 'wfm') parts.push(`<span>${s.stereo ? '<b class="ok">stereo</b>' : 'mono'} (pilot ${((s.pilot || 0) * 100).toFixed(1)})</span>`);
@@ -1422,6 +1454,60 @@ function audioReadout() {
     $('#aRds').innerHTML = `<span>RDS <b>${esc(r.ps.trim() || '…')}</b></span><span>PI ${r.pi || '…'}</span><span>${esc(r.pty || '')}</span><span>${esc(r.rt || '')}</span><span class="note">${r.groups} groups${r.bad ? `, ${r.bad} bad blocks` : ''}</span>`;
   }
 }
+const LOG_MAX = 200;
+function audioBank(b) {
+  audio.bank = b;
+  const cur = b.locked;
+  $('#aLock').innerHTML = cur ? `<span>locked on <b class="ok">${fmtHz(cur)}</b></span>` : `<span class="note">scanning ${b.freqs.length} channels${audioWindows().length > 1 ? ` (window ${audio.win + 1}/${audioWindows().length})` : ''}</span>`;
+  for (const e of b.events) {
+    const tb = $('#aLog tbody'), tr = document.createElement('tr');
+    tr.innerHTML = `<td>${new Date(performance.timeOrigin + e.t0).toLocaleTimeString()}</td><td>${fmtHz(e.freq)}</td><td>${e.dur.toFixed(1)} s</td><td>${e.peak.toFixed(0)} dB</td>`;
+    tb.prepend(tr); while (tb.children.length > LOG_MAX) tb.lastChild.remove();
+  }
+  const c = $('#aBank'); fitCanvas(c);
+  const g = c.getContext('2d'), W = c.width, H = c.height, d = window.devicePixelRatio || 1, n = b.freqs.length;
+  g.fillStyle = '#07090c'; g.fillRect(0, 0, W, H);
+  if (!n) return;
+  const bw = W / n, thr = +$('#aThr').value;
+  g.strokeStyle = '#2a303b'; g.beginPath(); const yThr = H - 4 * d - (thr / 40) * (H - 18 * d); g.moveTo(0, yThr); g.lineTo(W, yThr); g.stroke();
+  for (let i = 0; i < n; i++) {
+    const over = Math.max(0, Math.min(40, b.over[i])), h = (over / 40) * (H - 18 * d), x = i * bw;
+    const lockedOut = b.lockouts.includes(b.freqs[i]);
+    g.fillStyle = b.freqs[i] === cur ? '#ffb347' : b.open[i] ? '#5fd38d' : '#3a4a66';
+    g.fillRect(x + 1, H - 4 * d - h, Math.max(1, bw - 2), h);
+    if (lockedOut) { g.strokeStyle = '#ff6b6b'; g.lineWidth = d; g.strokeRect(x + 1, 2, Math.max(1, bw - 2), H - 6 * d); }
+  }
+  if (bw > 34 * d) { g.fillStyle = '#7d8798'; g.font = `${10 * d}px system-ui`; for (let i = 0; i < n; i++) g.fillText((b.freqs[i] / 1e6).toFixed(n > 20 ? 2 : 4), i * bw + 2 * d, H - 6 * d - 0); }
+  // hop to the next window when nothing is active for a while (bands wider than one capture)
+  const wins = audioWindows();
+  if (audio.source === 'device' && wins.length > 1 && !cur && !b.open.some(Boolean)) {
+    audio.idleSince = audio.idleSince || performance.now();
+    if (performance.now() - audio.idleSince > 1500 && !audio.hopping) audioHop();
+  } else audio.idleSince = 0;
+}
+async function audioHop() {
+  const wins = audioWindows(); audio.hopping = true;
+  try {
+    audio.win = (audio.win + 1) % wins.length; audio.center = wins[audio.win]; audio.idleSince = 0;
+    hrf.onData = null; await hrf.setMode(MODE.OFF); await hrf.setFreq(audio.center);
+    audio.worker.postMessage({ cmd: 'start', rate: audio.rate, center: audio.center, freq: audio.center + 1e6, mode: audio.mode, squelch: +$('#aSq').value, scan: scanCfg() });
+    audio.worker.postMessage({ cmd: 'stereo', on: $('#aStereo').checked });
+    audio.spectrum = null; hrf.skip = READERS; hrf.onData = audioData; await hrf.setMode(MODE.RX);
+  } finally { audio.hopping = false; }
+}
+$('#aBank').onclick = e => {
+  const b = audio.bank; if (!b) return;
+  const r = e.target.getBoundingClientRect(), i = Math.floor((e.clientX - r.left) / r.width * b.freqs.length), f = b.freqs[i];
+  if (f === undefined) return;
+  if (audio.lockouts.has(f)) audio.lockouts.delete(f); else audio.lockouts.add(f);
+  if (audio.worker) audio.worker.postMessage({ cmd: 'bank', lockouts: [...audio.lockouts] });
+};
+$('#aBank').onmousemove = e => { const b = audio.bank; if (!b) return; const r = e.target.getBoundingClientRect(), i = Math.floor((e.clientX - r.left) / r.width * b.freqs.length); if (b.freqs[i] !== undefined) hoverText($('#aBank'), `${fmtHz(b.freqs[i])} · ${b.over[i].toFixed(0)} dB over floor${b.lockouts.includes(b.freqs[i]) ? ' · locked out' : ''}`); };
+$('#aThr').oninput = () => { $('#aThrV').textContent = $('#aThr').value; if (audio.worker) audio.worker.postMessage({ cmd: 'bank', thresholdDb: +$('#aThr').value }); };
+$('#aHold').onchange = () => { if (audio.worker) audio.worker.postMessage({ cmd: 'bank', holdMs: +$('#aHold').value * 1000 }); };
+$('#aPrio').onchange = () => { if (audio.worker) audio.worker.postMessage({ cmd: 'bank', priority: +$('#aPrio').value > 0 ? +$('#aPrio').value * 1e6 : null }); };
+$('#aScanOn').onchange = () => { if (audio.running) audioStart(audio.source === 'file' ? audio.file : undefined); else $('#aBankWrap').style.display = $('#aScanOn').checked ? 'block' : 'none'; };
+$('#aLogClear').onclick = () => { $('#aLog tbody').textContent = ''; };
 function audioDraw() {
   if (!audio.spectrum) return;
   const lo = audio.center - audio.rate / 2, hi = audio.center + audio.rate / 2, bw = audio.mode === 'wfm' ? 200e3 : audio.mode === 'nfm' ? 12.5e3 : 8e3;

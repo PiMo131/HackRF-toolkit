@@ -1,0 +1,18 @@
+{
+ "global": {
+  "core:datatype": "ci8",
+  "core:sample_rate": 2000000.0,
+  "core:version": "1.0.0",
+  "core:hw": "HackRF One",
+  "core:recorder": "rfscan",
+  "core:description": "synthetic PMR446 bursts ch3/ch8/ch14"
+ },
+ "captures": [
+  {
+   "core:sample_start": 0,
+   "core:frequency": 445900000.0,
+   "core:datetime": "2026-10-28T11:52:43.710773Z"
+  }
+ ],
+ "annotations": []
+}

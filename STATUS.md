@@ -65,7 +65,14 @@ Serve: `python3 -m http.server 8090 --bind 127.0.0.1 --directory web`, open http
   Verified: synthetic stereo FM + RDS (`tests/web/make_fm_rds.py`, `tests/web/test_audio_worker.js`): PI/PS/RT/PTY decode,
   0 bad blocks, L/R separation ~10 dB; real fm_98 capture: stereo pilot lock + RDS block sync (file too short for groups);
   live: 10 Msps sustained, DSP 27 % of real time. No FM received here today (antenna), so live FM audio is untested on air.
-  Next: channel-bank scanner (squelch on all channels at once, auto-lock), live P2000 feed (stream into multimon-ng WASM).
+  Live FM on air (whip, 2026-10-28 pm): stereo lock and audio OK on 102.7 MHz; RDS fails because the station is only
+  ~11 dB CNR here (57 kHz subcarrier ~2 dB above the demodulated noise); captures in testdata/fm_live_*.
+* Channel-bank scanner (same day): `ChannelBank` in audio-worker.js: 4096-pt FFT per block, channel power = centre bins,
+  floor = 30th percentile over neighbouring channels (time-smoothed), 2-block debounce, splatter suppression, hold,
+  priority, lockouts, events. Page hops 10 MHz windows when idle. Tests: `tests/web/make_pmr_synth.py` +
+  `tests/web/test_scanner.js` (locks ch3/8/14/3 as scripted); live PMR446 quiet (all channels within ±4 dB of floor);
+  FM-band scanner auto-locks on 102.7 MHz.
+  Next: live P2000 feed (stream into multimon-ng WASM), CTCSS display, per-transmission recording.
   Python changes for Pyodide: `_ofdm_util.pmap` (no threads on emscripten), `recording.iq` reads via fromfile (no mmap).
 * Scan waterfall is 2048 columns over the full range, so it is coarse when zoomed.
 * Native `rfscan capture` hit "capture timeout" at 1089 MHz/20 Msps today while hackrf_transfer worked (see item 0).

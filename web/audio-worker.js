@@ -248,7 +248,7 @@ class RdsDecoder {
     this.rot = 0; this.rotAcc = { re: 0, im: 0 };
     this.mu = 0; this.prevHalf = 0; this.lastHalf = 0; this.halfN = 0; this.scoreOdd = 0; this.scoreEven = 0; this.lastSample = 0; this.prevE = 0;
     this.bits = 0; this.nbits = 0; this.expect = null; this.skip = 0; this.errors = 0;
-    this.blocks = {}; this.groups = 0; this.badBlocks = 0;
+    this.blocks = {}; this.groups = 0; this.badBlocks = 0; this.goodRun = 0;
     this.pi = null; this.ps = Array(8).fill(' '); this.psOk = 0; this.rt = Array(64).fill(' '); this.rtAB = null; this.pty = null; this.tp = null;
     this.rtDone = ''; this.psDone = '';
   }
@@ -294,11 +294,11 @@ class RdsDecoder {
     let off = null;
     for (const k in RDS_SYNDROME) if (RDS_SYNDROME[k] === syn) off = k;
     if (this.expect) {
-      if (off === this.expect || (this.expect === 'C' && off === 'Cp')) { this.accept(off); this.errors = 0; }
-      else { this.badBlocks++; if (++this.errors > 8) { this.expect = null; this.blocks = {}; } else { this.blocks = {}; this.expect = RDS_NEXT[this.expect]; } }
+      if (off === this.expect || (this.expect === 'C' && off === 'Cp')) { this.accept(off); this.errors = 0; this.goodRun++; }
+      else { this.badBlocks++; this.goodRun = 0; if (++this.errors > 8) { this.expect = null; this.blocks = {}; } else { this.blocks = {}; this.expect = RDS_NEXT[this.expect]; } }
       this.skip = 25;
     } else if (off) {
-      this.accept(off); this.skip = 25;
+      this.accept(off); this.skip = 25; this.goodRun = 1;
     }
   }
   accept(off) {
@@ -329,10 +329,121 @@ class RdsDecoder {
   }
   status() {
     return { pi: this.pi === null ? null : this.pi.toString(16).toUpperCase().padStart(4, '0'), ps: this.ps.join(''), rt: this.rtDone,
-      pty: this.pty === null ? null : PTY_EU[this.pty], tp: this.tp, groups: this.groups, bad: this.badBlocks, synced: !!this.expect };
+      pty: this.pty === null ? null : PTY_EU[this.pty], tp: this.tp, groups: this.groups, bad: this.badBlocks, synced: this.goodRun >= 2 };
   }
 }
 function chr(c) { return c >= 32 && c < 127 ? String.fromCharCode(c) : (c === 13 ? '\r' : ' '); }
+
+// ---------------------------------------------------------------- spectrum
+class Spectrum {
+  constructor(n) {
+    this.n = n; this.re = new Float32Array(n); this.im = new Float32Array(n); this.win = new Float32Array(n); this.rev = new Uint32Array(n);
+    const bits = Math.log2(n);
+    for (let i = 0; i < n; i++) { let r = 0; for (let b = 0; b < bits; b++) r |= ((i >> b) & 1) << (bits - 1 - b); this.rev[i] = r; this.win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (n - 1)); }
+    this.cos = new Float32Array(n / 2); this.sin = new Float32Array(n / 2);
+    for (let i = 0; i < n / 2; i++) { this.cos[i] = Math.cos(2 * Math.PI * i / n); this.sin[i] = Math.sin(2 * Math.PI * i / n); }
+    this.norm = 1 / (n * n / 4);
+  }
+  // fftshifted power in dB of the first n samples of an Int8 IQ buffer
+  db(iq8) {
+    const { n, re, im, win, rev, cos, sin } = this;
+    for (let i = 0; i < n; i++) { const j = rev[i]; re[i] = iq8[2 * j] * win[j] / 128; im[i] = iq8[2 * j + 1] * win[j] / 128; }
+    for (let size = 2; size <= n; size <<= 1) {
+      const half = size >> 1, step = n / size;
+      for (let i = 0; i < n; i += size) for (let j = i, k = 0; j < i + half; j++, k += step) {
+        const l = j + half, c = cos[k], sn = sin[k];
+        const tr = re[l] * c + im[l] * sn, ti = im[l] * c - re[l] * sn;
+        re[l] = re[j] - tr; im[l] = im[j] - ti; re[j] += tr; im[j] += ti;
+      }
+    }
+    const out = new Float32Array(n), h = n >> 1, norm = this.norm;
+    for (let i = 0; i < n; i++) out[(i + h) & (n - 1)] = 10 * Math.log10((re[i] * re[i] + im[i] * im[i]) * norm + 1e-20);
+    return out;
+  }
+}
+
+// ---------------------------------------------------------------- channel bank (scanner)
+// Power of every channel in a grid from one FFT per block; per-channel noise floor; squelch;
+// lock on the strongest open channel (priority channel first), hold after it closes.
+class ChannelBank {
+  constructor(cfg, rate, center) {
+    this.rate = rate; this.center = center; this.step = cfg.step; this.bw = cfg.bw;
+    this.thresholdDb = cfg.thresholdDb ?? 10; this.holdMs = cfg.holdMs ?? 2000; this.priority = cfg.priority || null;
+    this.lockouts = new Set(cfg.lockouts || []);
+    this.N = 4096; this.spec = new Spectrum(this.N); this.binHz = rate / this.N;
+    const lo = Math.max(cfg.lo, center - rate * 0.42), hi = Math.min(cfg.hi, center + rate * 0.42);
+    this.freqs = [];
+    // keep channels off the DC spike: a few kHz for narrow channels, 150 kHz for broadcast FM
+    const dcGuard = cfg.bw >= 100e3 ? 150e3 : 20e3;
+    for (let f = Math.ceil((lo - cfg.lo) / cfg.step) * cfg.step + cfg.lo; f <= hi + 1; f += cfg.step) if (Math.abs(f - center) > dcGuard) this.freqs.push(Math.round(f));
+    const n = this.freqs.length;
+    this.power = new Float32Array(n).fill(-120); this.floor = new Float32Array(n).fill(NaN); this.open = new Uint8Array(n); this.above = new Uint8Array(n); this.peak = new Float32Array(n).fill(-200);
+    this.locked = -1; this.lockedSince = 0; this.closedAt = 0; this.events = []; this.t = 0; this.n = n; this.blocks = 0;
+    // measure the middle of the channel only, so a neighbour's splatter does not open it
+    this.halfBins = Math.max(1, Math.round(Math.min(this.bw / 2, this.step * 0.4) / this.binHz));
+  }
+  // returns the channel index to demodulate (or -1); `now` in ms
+  update(iq8, now) {
+    if (iq8.length < 2 * this.N) return this.locked;
+    const db = this.spec.db(iq8), N = this.N, hb = this.halfBins, lo = this.center - this.rate / 2;
+    this.blocks++;
+    for (let i = 0; i < this.n; i++) {
+      const k = Math.round((this.freqs[i] - lo) / this.binHz);
+      let acc = 0, c = 0;
+      for (let j = Math.max(0, k - hb); j <= Math.min(N - 1, k + hb); j++) { acc += Math.pow(10, db[j] / 10); c++; }
+      const p = 10 * Math.log10(acc / Math.max(1, c) + 1e-20);
+      this.power[i] += (p - this.power[i]) * 0.35;
+    }
+    // noise floor per channel = 30th percentile of the smoothed power over the neighbouring channels
+    // (so a channel that is always busy, like a broadcast station, still stands out), smoothed in time
+    const half = Math.max(8, Math.round(this.n / 8)), tmp = [];
+    for (let i = 0; i < this.n; i++) {
+      tmp.length = 0;
+      for (let j = Math.max(0, i - half); j <= Math.min(this.n - 1, i + half); j++) tmp.push(this.power[j]);
+      tmp.sort((a, b) => a - b);
+      const fl = tmp[Math.floor(tmp.length * 0.3)];
+      this.floor[i] = Number.isNaN(this.floor[i]) || this.blocks < 6 ? fl : this.floor[i] + (fl - this.floor[i]) * 0.05;
+    }
+    if (this.blocks < 12) return -1;      // let the estimates settle (~150 ms)
+    let best = -1, bestDb = -Infinity, prio = -1;
+    for (let i = 0; i < this.n; i++) {
+      const over = this.power[i] - this.floor[i];
+      const wasOpen = this.open[i];
+      // a channel whose direct neighbour is much stronger is seeing that neighbour's skirts, not its own signal
+      const nb = Math.max(i > 0 ? this.power[i - 1] : -200, i + 1 < this.n ? this.power[i + 1] : -200);
+      const splatter = nb - this.power[i] > 8 && Math.abs(this.freqs[(i > 0 && this.power[i - 1] >= nb) ? i - 1 : i + 1] - this.freqs[i]) <= this.step * 1.01;
+      // debounce: two consecutive blocks above threshold before a channel counts as open
+      const above = !splatter && (over > this.thresholdDb || (wasOpen && over > this.thresholdDb - 3));
+      this.above[i] = above ? Math.min(3, this.above[i] + 1) : 0;
+      this.open[i] = this.above[i] >= 2 || (wasOpen && above) ? 1 : 0;
+      if (this.open[i] && over > this.peak[i]) this.peak[i] = over;
+      if (!this.open[i] || this.lockouts.has(this.freqs[i])) continue;
+      if (this.priority && Math.abs(this.freqs[i] - this.priority) < this.step / 2) prio = i;
+      if (over > bestDb) { bestDb = over; best = i; }
+    }
+    if (prio >= 0) best = prio;
+    const L = this.locked;
+    if (L >= 0) {
+      if (this.open[L] && !this.lockouts.has(this.freqs[L])) { this.closedAt = 0; if (prio >= 0 && prio !== L) this.switchTo(prio, now); }
+      else {
+        if (!this.closedAt) this.closedAt = now;
+        if (now - this.closedAt > this.holdMs || (best >= 0 && best !== L && now - this.closedAt > 300)) { this.release(now); if (best >= 0) this.switchTo(best, now); }
+      }
+    } else if (best >= 0) this.switchTo(best, now);
+    return this.locked;
+  }
+  switchTo(i, now) { if (this.locked >= 0) this.release(now); this.locked = i; this.lockedSince = now; this.closedAt = 0; this.peak[i] = this.power[i] - this.floor[i]; }
+  release(now) {
+    const i = this.locked; if (i < 0) return;
+    this.events.push({ freq: this.freqs[i], t0: this.lockedSince, dur: (now - this.lockedSince) / 1000, peak: this.peak[i] });
+    this.locked = -1; this.peak[i] = -200;
+  }
+  status() {
+    const ev = this.events; this.events = [];
+    return { freqs: this.freqs, over: Array.from(this.power, (p, i) => +(p - this.floor[i]).toFixed(1)), open: Array.from(this.open),
+      locked: this.locked >= 0 ? this.freqs[this.locked] : null, events: ev, lockouts: [...this.lockouts] };
+  }
+}
 
 // ---------------------------------------------------------------- receiver
 class Receiver {
@@ -344,10 +455,17 @@ class Receiver {
     this.demod = this.mode === 'wfm' ? new WfmDemod(fs) : this.mode === 'nfm' ? new NfmDemod(fs, cfg.nfmBw || 12.5e3) : new AmDemod(fs);
     this.squelchDb = cfg.squelch ?? -200; this.level = -100; this.open = true;
     this.busyMs = 0; this.inSamples = 0;
+    this.bank = cfg.scan ? new ChannelBank({ ...cfg.scan, bw: bw / 2 }, this.rate, this.center) : null;
+    this.bankIdx = -1;
   }
   tune(freq) { this.freq = freq; this.fe.setOffset(freq - this.center); }
   process(iq8) {
     const t = performance.now();
+    if (this.bank) {
+      const i = this.bank.update(iq8, t);
+      if (i !== this.bankIdx) { this.bankIdx = i; if (i >= 0) this.tune(this.bank.freqs[i]); }
+      if (i < 0) { this.busyMs += performance.now() - t; this.inSamples += iq8.length / 2; return { L: new Float32Array(0), R: new Float32Array(0), stereo: false }; }
+    }
     const [I, Q] = this.fe.process(iq8);
     this.inSamples += iq8.length / 2;
     if (!I.length) return null;
@@ -363,31 +481,19 @@ class Receiver {
   status() {
     const inS = this.inSamples / this.rate, cpu = inS ? this.busyMs / 1000 / inS : 0;
     this.busyMs = 0; this.inSamples = 0;
-    return { level: this.level, open: this.open, cpu, chanRate: this.fe.chanRate, ...this.demod.status() };
+    return { level: this.level, open: this.open, cpu, chanRate: this.fe.chanRate, freq: this.freq, bank: this.bank ? this.bank.status() : null, ...this.demod.status() };
   }
 }
 
 // ---------------------------------------------------------------- worker glue
 if (typeof importScripts === 'function') {
-  let rx = null, spec = null, specN = 2048, specAcc = null, specCount = 0, lastStatus = 0;
-  // small power spectrum of the whole capture for the band display (max-hold over ~100 ms)
-  function spectrum(iq8, rate) {
-    const n = specN; if (iq8.length < 2 * n) return;
-    if (!spec) { spec = { re: new Float32Array(n), im: new Float32Array(n), win: new Float32Array(n), rev: new Uint32Array(n) };
-      const bits = Math.log2(n); for (let i = 0; i < n; i++) { let r = 0; for (let b = 0; b < bits; b++) r |= ((i >> b) & 1) << (bits - 1 - b); spec.rev[i] = r; spec.win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (n - 1)); } }
-    const { re, im, win, rev } = spec;
-    for (let i = 0; i < n; i++) { const j = rev[i]; re[i] = iq8[2 * j] * win[j] / 128; im[i] = iq8[2 * j + 1] * win[j] / 128; }
-    for (let size = 2; size <= n; size <<= 1) {
-      const half = size >> 1, a = -2 * Math.PI / size;
-      for (let i = 0; i < n; i += size) for (let j = 0; j < half; j++) {
-        const c = Math.cos(a * j), s = Math.sin(a * j), l = i + j + half;
-        const tr = re[l] * c - im[l] * s, ti = re[l] * s + im[l] * c;
-        re[l] = re[i + j] - tr; im[l] = im[i + j] - ti; re[i + j] += tr; im[i + j] += ti;
-      }
-    }
-    if (!specAcc) specAcc = new Float32Array(n).fill(-200);
-    const norm = 1 / (n * n / 4), h = n >> 1;
-    for (let i = 0; i < n; i++) { const k = (i + h) & (n - 1), p = 10 * Math.log10((re[i] * re[i] + im[i] * im[i]) * norm + 1e-20); if (p > specAcc[k]) specAcc[k] = p; }
+  let rx = null, disp = null, specAcc = null, specCount = 0, lastStatus = 0;
+  function spectrum(iq8) {
+    if (iq8.length < 4096) return;
+    disp = disp || new Spectrum(2048);
+    const db = disp.db(iq8);
+    if (!specAcc) specAcc = new Float32Array(2048).fill(-200);
+    for (let i = 0; i < 2048; i++) if (db[i] > specAcc[i]) specAcc[i] = db[i];
     specCount++;
   }
   onmessage = e => {
@@ -397,10 +503,11 @@ if (typeof importScripts === 'function') {
     if (!rx) return;
     if (m.cmd === 'tune') { rx.tune(m.freq); return; }
     if (m.cmd === 'squelch') { rx.squelchDb = m.db; return; }
+    if (m.cmd === 'bank' && rx.bank) { if (m.thresholdDb !== undefined) rx.bank.thresholdDb = m.thresholdDb; if (m.holdMs !== undefined) rx.bank.holdMs = m.holdMs; if (m.priority !== undefined) rx.bank.priority = m.priority; if (m.lockouts) rx.bank.lockouts = new Set(m.lockouts); return; }
     if (m.cmd === 'stereo') { if (rx.demod.stereoOn !== undefined) rx.demod.stereoOn = m.on; return; }
     if (m.cmd === 'iq') {
       const iq8 = new Int8Array(m.buf);
-      if (specCount < 8) spectrum(iq8, rx.rate);
+      if (specCount < 8) spectrum(iq8);
       const r = rx.process(iq8);
       if (r && r.L.length) {
         const n = r.L.length, out = new Float32Array(2 * n);
@@ -417,5 +524,5 @@ if (typeof importScripts === 'function') {
     }
   };
 } else if (typeof module !== 'undefined') {
-  module.exports = { Receiver, FrontEnd, WfmDemod, RdsDecoder, rdsSyndrome, lowpassTaps, decimPlan };
+  module.exports = { Receiver, FrontEnd, WfmDemod, RdsDecoder, ChannelBank, Spectrum, rdsSyndrome, lowpassTaps, decimPlan };
 }
