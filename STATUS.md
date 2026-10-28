@@ -57,6 +57,9 @@ Serve: `python3 -m http.server 8090 --bind 127.0.0.1 --directory web`, open http
   decodes identically. Without web/tools those two decoders fall back to native-only automatically.
   Native-only: dab (welle-cli), GSM SI3/4 MCC/LAC (grgsm) and LoRa payload (gr-lora_sdr);
   GSM in the browser stops at BSIC (SCH parity). Capture lengths are capped (BROWSER_MAX_S) to fit WebAssembly memory.
+  Browser decode robustness: a capture whose USB stream stalls fails after 3 s (STALL_MS) instead of hanging
+  with the busy flag set; a second click while busy is refused; "Reset stuck decode" on the Decodes tab
+  releases the flag and idles the radio.
   Python changes for Pyodide: `_ofdm_util.pmap` (no threads on emscripten), `recording.iq` reads via fromfile (no mmap).
 * Scan waterfall is 2048 columns over the full range, so it is coarse when zoomed.
 * Native `rfscan capture` hit "capture timeout" at 1089 MHz/20 Msps today while hackrf_transfer worked (see item 0).

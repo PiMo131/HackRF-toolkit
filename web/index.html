@@ -135,7 +135,7 @@ td button{padding:1px 8px;font-size:12px}
 
 <section id="decodes">
   <div class="readout" id="decStatus">Decoders run the rfscan Python code in the browser (Pyodide). The first run downloads ~30 MB.</div>
-  <div class="row"><button id="decClear" class="sec">Clear</button></div>
+  <div class="row"><button id="decClear" class="sec">Clear</button><button id="decReset" class="sec" disabled>Reset stuck decode</button></div>
   <h3 style="font-size:13px;margin:8px 0 4px">Emitters</h3>
   <div class="tablewrap" style="max-height:300px"><table id="emTable"><thead><tr><th>Level</th><th>Decoder</th><th>Frequency</th><th>ID</th><th>Seen</th><th>Last label</th></tr></thead><tbody></tbody></table></div>
   <h3 style="font-size:13px;margin:12px 0 4px">Runs</h3>
@@ -338,6 +338,7 @@ function onDeviceLost(e) {
   hrf = null; live.running = false; scan.running = false;
   $('#devinfo').textContent = 'no device';
   for (const b of ['#lStart', '#sStart', '#recBtn', '#lDecode']) $(b).disabled = true;
+  if (dec.busy) decStatus('device disconnected during decode; reconnect and try again', 'bad');
   $('#lStart').textContent = 'Start'; $('#sStart').textContent = 'Start sweep';
   setStatus('device disconnected', 'bad');
 }
@@ -1107,14 +1108,20 @@ function table(head, rows) {
 $('#decClear').onclick = () => { dec.runs = []; dec.emitters.clear(); decRender(); };
 
 // collect `bytes` of RX data; the first `discard` bytes (in-flight USB transfers) are dropped
+const STALL_MS = 3000;
 function grab(bytes, discard = 0) {
-  return new Promise(res => {
-    const chunks = []; let got = 0, skip = discard;
+  return new Promise((res, rej) => {
+    const chunks = []; let got = 0, skip = discard, timer;
+    const fail = () => { if (hrf) hrf.onData = null; rej(new Error(`USB stream stalled after ${got} of ${bytes} bytes (device dropped off USB? check power/cable)`)); };
+    const arm = () => { clearTimeout(timer); timer = setTimeout(fail, STALL_MS); };
+    arm();
+    if (!hrf) { clearTimeout(timer); rej(new Error('device disconnected')); return; }
     hrf.onData = buf => {
+      arm();
       if (skip > 0) { skip -= buf.length; return; }
       const part = got + buf.length > bytes ? buf.slice(0, bytes - got) : buf;
       chunks.push(part); got += part.length;
-      if (got >= bytes) { hrf.onData = null; res(chunks); }
+      if (got >= bytes) { clearTimeout(timer); hrf.onData = null; res(chunks); }
     };
   });
 }
@@ -1161,8 +1168,12 @@ async function captureIQ(fc, rate, seconds, bursty, label) {
 // decode whatever the band plan expects between f0 and f1: one dwell per (centre, rate), like the scheduler
 async function decodeAt(fc, f0, f1, source) {
   if (!hrf) { decStatus('connect the HackRF first', 'bad'); return; }
-  if (dec.busy) { decStatus('a decode is already running', 'warn'); return; }
-  const info = await decWorker();
+  if (dec.busy) { decStatus(`a decode is already running (${dec.busy}); use Reset if it is stuck`, 'warn'); return; }
+  dec.busy = source; $('#lDecode').disabled = true; $('#decReset').disabled = false;
+  let info;
+  try { info = await decWorker(); }
+  catch (e) { decReset(); return; }
+  if (!dec.busy) return;      // reset while loading
   const want = decodersFor(f0, f1);
   const decs = want.filter(d => info.available.includes(d)), native = want.filter(d => !info.available.includes(d));
   if (!decs.length) {
@@ -1176,14 +1187,15 @@ async function decodeAt(fc, f0, f1, source) {
     gr.sec = Math.max(gr.sec, sec); if (d) gr.decs.push(d); groups.set(k, gr);
   }
   const wasLive = live.running, wasScan = scan.running;
-  dec.busy = true; $('#lDecode').disabled = true;
   try {
     if (wasScan) await scanStop();
     if (wasLive) await liveStop();
     const caps = [];
     for (const gr of groups.values()) {
       const label = `${source} [${gr.decs.join(', ') || 'classify'}]`;
+      decStatus(`${label}: tuning ${fmtHz(gr.center)} at ${gr.rate / 1e6} Msps`);
       caps.push({ cap: await captureIQ(gr.center, gr.rate, gr.sec, !gr.decs.some(d => WIDEBAND.has(d)), label), gr, label });
+      if (!dec.busy) throw new Error('reset by user');
     }
     if (wasLive) await liveStart();
     for (const { cap, gr, label } of caps) {
@@ -1192,10 +1204,18 @@ async function decodeAt(fc, f0, f1, source) {
     }
   } catch (e) {
     decStatus(`${source}: ${e.message}`, 'bad'); console.error(e);
+    if (hrf) await hrf.setMode(MODE.OFF).catch(() => {});
   } finally {
-    dec.busy = false; $('#lDecode').disabled = !hrf;
+    dec.busy = false; $('#lDecode').disabled = !hrf; $('#decReset').disabled = true;
   }
 }
+// escape hatch: forget a stuck decode, put the radio back to idle
+async function decReset() {
+  dec.busy = false; $('#lDecode').disabled = !hrf; $('#decReset').disabled = true;
+  if (hrf) { hrf.onData = null; await hrf.setMode(MODE.OFF).catch(() => {}); }
+  decStatus('reset: radio idle, ready for a new decode', 'ok');
+}
+$('#decReset').onclick = decReset;
 $('#lDecode').onclick = () => {
   if (!hrf) return;
   if (!live.running) liveParams();
