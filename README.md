@@ -25,6 +25,12 @@ the Python modules from `rfscan/` running in [Pyodide](https://pyodide.org), plu
 and rtl_433 compiled to WebAssembly, so results match the native tool. Offline analysis of
 SigMF files works in any browser; nothing is uploaded.
 
+| | |
+|---|---|
+| ![Live spectrum and waterfall at 935–945 MHz](docs/screenshots/live-gsm900.jpg) **Live:** spectrum, waterfall and auto-gain; GSM carriers and an LTE cell at 900 MHz | ![Full 1–6000 MHz sweep](docs/screenshots/scan-full.jpg) **Scan:** 1–6000 MHz sweep with detected regions, band labels and a sortable table |
+| ![2.4 GHz zoom](docs/screenshots/scan-zoom-2400.jpg) **Scan, zoomed:** Wi-Fi and BLE around 2.4 GHz; green = detected regions | ![Decodes tab](docs/screenshots/decodes.jpg) **Decodes:** one click on the 900 MHz band gives 3 GSM cells and an LTE MIB with CRC |
+| ![Offline analysis](docs/screenshots/offline-2290.jpg) **Offline IQ:** a 120 MB SigMF file analysed in the browser in 0.7 s | ![Offline zoom](docs/screenshots/offline-zoom.jpg) **Offline, zoomed:** box-select on the waterfall re-analyses just that time span |
+
 Source is in `web/`. `web/build.sh` refreshes the Python copy in `web/py` after changes to
 `rfscan/`; `web/build_tools.sh` rebuilds the two WebAssembly tools. GitHub Pages deploys `web/`
 on every push to `main` (`.github/workflows/pages.yml`).

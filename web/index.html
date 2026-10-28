@@ -36,6 +36,7 @@ button:disabled{opacity:.45;cursor:default}
 table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
 th,td{border-bottom:1px solid var(--line);padding:3px 6px;text-align:left;white-space:nowrap}
 th{color:var(--mute);font-weight:500;position:sticky;top:0;background:var(--panel)}
+th.sort{cursor:pointer;user-select:none}th.sort:hover{color:var(--text)}
 td.band{white-space:normal;color:var(--mute)}
 .tablewrap{max-height:420px;overflow:auto;border:1px solid var(--line)}
 td button{padding:1px 8px;font-size:12px}
@@ -105,7 +106,7 @@ td button{padding:1px 8px;font-size:12px}
   <div class="hint">Firmware sweep mode, 20 MHz steps. Drag to zoom, double-click for the full range. Red ticks on top: tuning steps that clipped.</div>
   <div class="plotwrap"><canvas id="sSpec" class="spec"></canvas><div class="sel"></div><div class="hover"></div></div>
   <div class="plotwrap"><canvas id="sWf" class="wf" style="height:200px"></canvas></div>
-  <div class="tablewrap"><table id="sTable"><thead><tr><th>Frequency</th><th>Width</th><th>Peak&nbsp;dB</th><th>Mean&nbsp;dB</th><th>Busy</th><th>Band</th><th>Note</th><th></th></tr></thead><tbody></tbody></table></div>
+  <div class="tablewrap"><table id="sTable"><thead><tr><th data-k="fc" class="sort">Frequency ▴</th><th data-k="bw" class="sort">Width</th><th data-k="peak" class="sort">Peak&nbsp;dB</th><th data-k="mean" class="sort">Mean&nbsp;dB</th><th data-k="busy" class="sort">Busy</th><th>Band</th><th>Note</th><th></th></tr></thead><tbody></tbody></table></div>
 </section>
 
 <section id="offline">
@@ -436,9 +437,10 @@ function drawSpectrum(c, vlo, vhi, traces, { ymin, ymax, spans = [], ticks = [] 
   g.strokeStyle = '#1d232c'; g.fillStyle = '#7d8798';
   for (let v = Math.ceil(ymin / 10) * 10; v <= ymax; v += 10) { const y = yOf(v); g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); g.fillText(v + ' dB', 4 * d, y - 3 * d); }
   const step = niceStep(vhi - vlo, Math.max(3, W / (110 * d)));
+  const labels = [];
   for (let f = Math.ceil(vlo / step) * step; f < vhi; f += step) {
     const x = (f - vlo) / (vhi - vlo) * W; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke();
-    g.fillText(fmtHz(f), x + 3 * d, H - 4 * d);
+    labels.push([x, fmtHz(f)]);
   }
   traces.forEach((t, i) => {
     const p = pooled[i]; g.strokeStyle = t.color; g.lineWidth = (t.width || 1) * d; g.beginPath(); let pen = false;
@@ -446,6 +448,11 @@ function drawSpectrum(c, vlo, vhi, traces, { ymin, ymax, spans = [], ticks = [] 
     g.stroke();
   });
   for (const t of ticks) { g.fillStyle = t.color; const x0 = (t.lo - vlo) / (vhi - vlo) * W, x1 = (t.hi - vlo) / (vhi - vlo) * W; g.fillRect(x0, 0, Math.max(2, x1 - x0), 4 * d); }
+  // frequency labels last, on a dark strip, so the traces never hide them
+  const strip = 15 * d;
+  g.fillStyle = 'rgba(7,9,12,.85)'; g.fillRect(0, H - strip, W, strip);
+  g.fillStyle = '#7d8798';
+  for (const [x, t] of labels) g.fillText(t, x + 3 * d, H - 4 * d);
   return { pooled, ymin, ymax };
 }
 function colorRow(img, y, W, row, vmin, vmax) {
@@ -808,11 +815,21 @@ function scanDraw(final) {
   const el = (performance.now() - scan.t0) / 1000;
   $('#sRead').innerHTML = `<span>range <b>${scan.lo}–${scan.hi} MHz</b></span><span>bin <b>${fmtHz(scan.df)}</b></span>` +
     `<span>sweeps <b>${scan.sweeps}</b> (${(scan.sweeps / el).toFixed(2)}/s)</span><span>regions <b>${scan.regions.length}</b>${odd ? `, ${shown.length} odd` : ''}</span>` +
-    (scan.clipped.size ? `<span class="bad">${scan.clipped.size} steps clipping: lower LNA/VGA</span>` : '') + (final ? '<span>stopped</span>' : '');
+    (scan.clipped.size ? `<span class="bad">${scan.clipped.size} tuning step${scan.clipped.size > 1 ? 's' : ''} clipping: lower LNA/VGA</span>` : '') + (final ? '<span>stopped</span>' : '');
   scanTable(shown);
 }
+scan.sortKey = 'fc'; scan.sortDir = 1;
+for (const th of document.querySelectorAll('#sTable th.sort')) th.onclick = () => {
+  const k = th.dataset.k;
+  if (scan.sortKey === k) scan.sortDir = -scan.sortDir; else { scan.sortKey = k; scan.sortDir = k === 'fc' ? 1 : -1; }
+  for (const o of document.querySelectorAll('#sTable th.sort')) o.textContent = o.textContent.replace(/ [▴▾]$/, '');
+  th.textContent += scan.sortDir > 0 ? ' ▴' : ' ▾';
+  scanDraw(!scan.running);
+};
 function scanTable(regs) {
   const tb = $('#sTable tbody'); tb.textContent = '';
+  const k = scan.sortKey, dir = scan.sortDir;
+  regs = regs.slice().sort((a, b) => ((a[k] || 0) - (b[k] || 0)) * dir);
   for (const r of regs.slice(0, 400)) {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${fmtHz(r.fc)}</td><td>${fmtHz(r.bw)}</td><td>${r.peak.toFixed(1)}</td><td>${r.mean.toFixed(1)}</td>` +
