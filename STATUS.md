@@ -60,6 +60,12 @@ Serve: `python3 -m http.server 8090 --bind 127.0.0.1 --directory web`, open http
   Browser decode robustness: a capture whose USB stream stalls fails after 3 s (STALL_MS) instead of hanging
   with the busy flag set; a second click while busy is refused; "Reset stuck decode" on the Decodes tab
   releases the flag and idles the radio.
+* Audio tab (2026-10-28): `web/audio-worker.js` (NCO mix -> polyphase FIR decimation to ~250 kHz -> WFM stereo+RDS /
+  NFM / AM -> 48 kHz) + `web/audio-worklet.js` (ring-buffer player). Live capture is 10 Msps (HackRF aliases below 8 Msps).
+  Verified: synthetic stereo FM + RDS (`tests/web/make_fm_rds.py`, `tests/web/test_audio_worker.js`): PI/PS/RT/PTY decode,
+  0 bad blocks, L/R separation ~10 dB; real fm_98 capture: stereo pilot lock + RDS block sync (file too short for groups);
+  live: 10 Msps sustained, DSP 27 % of real time. No FM received here today (antenna), so live FM audio is untested on air.
+  Next: channel-bank scanner (squelch on all channels at once, auto-lock), live P2000 feed (stream into multimon-ng WASM).
   Python changes for Pyodide: `_ofdm_util.pmap` (no threads on emscripten), `recording.iq` reads via fromfile (no mmap).
 * Scan waterfall is 2048 columns over the full range, so it is coarse when zoomed.
 * Native `rfscan capture` hit "capture timeout" at 1089 MHz/20 Msps today while hackrf_transfer worked (see item 0).
