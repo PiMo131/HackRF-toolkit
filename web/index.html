@@ -1,0 +1,1243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>rfscan web</title>
+<style>
+:root{--bg:#0e1014;--panel:#161a21;--line:#2a303b;--text:#d9dee7;--mute:#8b94a5;--acc:#4fa3ff;--acc2:#ffb347;--bad:#ff6b6b;--ok:#5fd38d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.4 system-ui,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:15px;margin:0 8px 0 0}
+#devinfo{color:var(--mute)}
+#status{margin-left:auto;color:var(--mute)}
+nav{display:flex;gap:4px;padding:8px 16px 0}
+nav button{background:none;border:1px solid var(--line);border-bottom:none;color:var(--mute);padding:6px 14px;border-radius:6px 6px 0 0;cursor:pointer}
+nav button.on{background:var(--panel);color:var(--text)}
+section{display:none;padding:12px 16px;border-top:1px solid var(--line)}
+section.on{display:block}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:10px}
+label{display:flex;flex-direction:column;gap:2px;color:var(--mute);font-size:11px}
+label.chk{flex-direction:row;align-items:center;gap:5px;font-size:12px;color:var(--text)}
+input,select{background:#0b0d11;color:var(--text);border:1px solid var(--line);border-radius:4px;padding:4px 6px;font:inherit;width:96px}
+input[type=checkbox]{width:auto}
+button{background:#23406b;color:#fff;border:1px solid #2f5690;border-radius:4px;padding:5px 12px;font:inherit;cursor:pointer}
+button.sec{background:#222832;border-color:var(--line)}
+button:disabled{opacity:.45;cursor:default}
+.readout{display:flex;flex-wrap:wrap;gap:16px;color:var(--mute);margin:4px 0 8px;font-variant-numeric:tabular-nums}
+.readout b{color:var(--text);font-weight:600}
+.warn{color:var(--acc2)} .bad{color:var(--bad)} .ok{color:var(--ok)}
+.plotwrap{position:relative;border:1px solid var(--line);background:#07090c;margin-bottom:6px}
+.plotwrap canvas{display:block;width:100%}
+.spec{height:240px}.wf{height:340px}
+.sel{position:absolute;background:rgba(79,163,255,.18);border:1px solid rgba(79,163,255,.7);pointer-events:none;display:none}
+.hover{position:absolute;top:4px;right:8px;color:var(--text);background:rgba(0,0,0,.6);padding:1px 6px;border-radius:3px;pointer-events:none;font-variant-numeric:tabular-nums}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{border-bottom:1px solid var(--line);padding:3px 6px;text-align:left;white-space:nowrap}
+th{color:var(--mute);font-weight:500;position:sticky;top:0;background:var(--panel)}
+td.band{white-space:normal;color:var(--mute)}
+.tablewrap{max-height:420px;overflow:auto;border:1px solid var(--line)}
+td button{padding:1px 8px;font-size:12px}
+.note{color:var(--mute);max-width:900px}
+#reclist a{color:var(--acc);margin-right:8px}
+.hint{color:var(--mute);font-size:11px;margin:-2px 0 6px}
+.lvl{display:inline-block;padding:0 6px;border-radius:3px;font-size:11px;font-weight:600}
+.lvl.crc{background:#1f5f3a;color:#bff5d3}.lvl.sync{background:#1f3f6f;color:#cfe3ff}.lvl.detect{background:#3a3f4a;color:#d0d5de}
+.run{border:1px solid var(--line);border-radius:4px;padding:6px 8px;margin-bottom:8px}
+.run summary{cursor:pointer;color:var(--text)}
+.run .err{color:var(--bad);white-space:pre-wrap;font-size:11px}
+@media (max-width:640px){header,section,nav{padding-left:16px;padding-right:16px}.wf{height:260px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>rfscan web</h1>
+  <button id="connect">Connect HackRF</button>
+  <span id="devinfo">no device</span>
+  <span id="status"></span>
+</header>
+<nav>
+  <button data-tab="live" class="on">Live</button>
+  <button data-tab="scan">Scan</button>
+  <button data-tab="offline">Offline IQ</button>
+  <button data-tab="decodes">Decodes <span id="decCount"></span></button>
+</nav>
+
+<section id="live" class="on">
+  <div class="row">
+    <label>Centre MHz<input id="lFreq" type="number" step="0.001" value="868.000"></label>
+    <label>Sample rate<select id="lRate"><option>2</option><option>4</option><option>8</option><option selected>10</option><option>16</option><option>20</option></select></label>
+    <label>FFT<select id="lN"><option>512</option><option>1024</option><option selected>2048</option><option>4096</option><option>8192</option></select></label>
+    <label>LNA dB<input id="lLna" type="number" min="0" max="40" step="8" value="16"></label>
+    <label>VGA dB<input id="lVga" type="number" min="0" max="62" step="2" value="20"></label>
+    <label class="chk"><input id="lAmp" type="checkbox">Amp +14</label>
+    <label class="chk"><input id="lAgc" type="checkbox" checked>Auto gain</label>
+    <label class="chk"><input id="lDc" type="checkbox" checked>Hide DC</label>
+    <button id="lStart" disabled>Start</button>
+    <button id="lReset" class="sec">Full view</button>
+  </div>
+  <div class="row">
+    <label>Record s<input id="recSec" type="number" min="0.1" step="0.1" value="3"></label>
+    <button id="recBtn" disabled>Record SigMF</button>
+    <button id="lDecode" disabled>Decode here</button>
+    <span id="reclist"></span>
+  </div>
+  <div class="readout" id="lRead"></div>
+  <div class="hint">Drag on the spectrum to zoom, double-click to retune to that frequency.</div>
+  <div class="plotwrap"><canvas id="lSpec" class="spec"></canvas><div class="sel"></div><div class="hover"></div></div>
+  <div class="plotwrap"><canvas id="lWf" class="wf"></canvas></div>
+</section>
+
+<section id="scan">
+  <div class="row">
+    <label>Start MHz<input id="sLo" type="number" value="1"></label>
+    <label>Stop MHz<input id="sHi" type="number" value="6000"></label>
+    <label>Bin width<select id="sN"><option value="4096">4.9 kHz</option><option value="1024" selected>19.5 kHz</option><option value="256">78 kHz</option></select></label>
+    <label>LNA dB<input id="sLna" type="number" min="0" max="40" step="8" value="32"></label>
+    <label>VGA dB<input id="sVga" type="number" min="0" max="62" step="2" value="20"></label>
+    <label class="chk"><input id="sAmp" type="checkbox">Amp +14</label>
+    <button id="sStart" disabled>Start sweep</button>
+    <button id="sClear" class="sec">Clear</button>
+    <label class="chk"><input id="sOdd" type="checkbox">Odd ones only</label>
+  </div>
+  <div class="readout" id="sRead"></div>
+  <div class="hint">Firmware sweep mode, 20 MHz steps. Drag to zoom, double-click for the full range. Red ticks on top: tuning steps that clipped.</div>
+  <div class="plotwrap"><canvas id="sSpec" class="spec"></canvas><div class="sel"></div><div class="hover"></div></div>
+  <div class="plotwrap"><canvas id="sWf" class="wf" style="height:200px"></canvas></div>
+  <div class="tablewrap"><table id="sTable"><thead><tr><th>Frequency</th><th>Width</th><th>Peak&nbsp;dB</th><th>Mean&nbsp;dB</th><th>Busy</th><th>Band</th><th>Note</th><th></th></tr></thead><tbody></tbody></table></div>
+</section>
+
+<section id="offline">
+  <div class="row">
+    <label>IQ files (.sigmf-meta + .sigmf-data, .cs8, .cs16, .cf32)<input id="oFiles" type="file" multiple style="width:320px"></label>
+    <label>Recording<select id="oPick" style="width:260px"></select></label>
+  </div>
+  <div class="row">
+    <label>Type<select id="oType"><option>ci8</option><option>cu8</option><option>ci16_le</option><option>cf32_le</option></select></label>
+    <label>Rate Msps<input id="oRate" type="number" step="0.001"></label>
+    <label>Centre MHz<input id="oFreq" type="number" step="0.001"></label>
+    <label>FFT<select id="oN"><option>256</option><option>512</option><option selected>1024</option><option>2048</option><option>4096</option></select></label>
+    <label>Rows<input id="oRows" type="number" value="500" min="50" max="4000"></label>
+    <label class="chk"><input id="oDc" type="checkbox" checked>Hide DC</label>
+    <button id="oGo" disabled>Analyse</button>
+    <button id="oZoom" class="sec" disabled>Zoom to selection</button>
+    <button id="oFull" class="sec" disabled>Whole file</button>
+    <button id="oExport" class="sec" disabled>Export selection</button>
+  </div>
+  <div class="row"><span class="note">Decoders:</span><span id="oDecs" class="row" style="margin:0"></span><button id="oDecode" disabled>Decode</button></div>
+  <div class="readout" id="oRead"></div>
+  <div class="hint">Works in any browser, nothing is uploaded. Drag a box on the waterfall to select time and frequency.</div>
+  <div class="plotwrap"><canvas id="oSpec" class="spec"></canvas><div class="sel"></div><div class="hover"></div></div>
+  <div class="plotwrap"><canvas id="oWf" class="wf" style="height:420px"></canvas><div class="sel"></div><div class="hover"></div></div>
+  <div class="tablewrap"><table id="oTable"><thead><tr><th>Frequency</th><th>Width</th><th>Peak&nbsp;dB</th><th>Mean&nbsp;dB</th><th>Duty</th><th>Band</th><th>Note</th></tr></thead><tbody></tbody></table></div>
+</section>
+
+<section id="decodes">
+  <div class="readout" id="decStatus">Decoders run the rfscan Python code in the browser (Pyodide). The first run downloads ~30 MB.</div>
+  <div class="row"><button id="decClear" class="sec">Clear</button></div>
+  <h3 style="font-size:13px;margin:8px 0 4px">Emitters</h3>
+  <div class="tablewrap" style="max-height:300px"><table id="emTable"><thead><tr><th>Level</th><th>Decoder</th><th>Frequency</th><th>ID</th><th>Seen</th><th>Last label</th></tr></thead><tbody></tbody></table></div>
+  <h3 style="font-size:13px;margin:12px 0 4px">Runs</h3>
+  <div id="decRuns"></div>
+</section>
+
+<script src="bands.js"></script>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+function fmtHz(hz) {
+  const a = Math.abs(hz);
+  if (a >= 1e6) return (hz / 1e6).toFixed(3) + ' MHz';
+  if (a >= 1e3) return (hz / 1e3).toFixed(1) + ' kHz';
+  return hz.toFixed(0) + ' Hz';
+}
+function bandAt(hz) {
+  const f = hz / 1e6;
+  for (const b of BANDS) if (b[0] <= f && f < b[1]) return b;
+  return null;
+}
+const COMMON = new Set(['cellular', 'cellular_ul', 'wifi', 'broadcast', 'rail']);
+function spurNote(f) {
+  const d = Math.abs(f - Math.round(f / 40e6) * 40e6);
+  return d < 60e3 ? 'HackRF clock harmonic?' : '';
+}
+function setStatus(t, cls = '') { const s = $('#status'); s.textContent = t; s.className = cls; }
+function download(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+
+// ---------------------------------------------------------------- FFT
+class FFT {
+  constructor(n) {
+    this.n = n;
+    this.re = new Float32Array(n); this.im = new Float32Array(n);
+    this.cos = new Float32Array(n / 2); this.sin = new Float32Array(n / 2);
+    for (let i = 0; i < n / 2; i++) { this.cos[i] = Math.cos(2 * Math.PI * i / n); this.sin[i] = Math.sin(2 * Math.PI * i / n); }
+    this.rev = new Uint32Array(n);
+    const bits = Math.log2(n);
+    for (let i = 0; i < n; i++) { let r = 0; for (let b = 0; b < bits; b++) r |= ((i >> b) & 1) << (bits - 1 - b); this.rev[i] = r; }
+    this.win = new Float32Array(n); let s = 0;
+    for (let i = 0; i < n; i++) { this.win[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (n - 1))); s += this.win[i]; }
+    this.norm = 1 / (s * s);           // full-scale complex tone -> 0 dBFS
+  }
+  run() {
+    const { n, re, im, cos, sin, rev } = this;
+    for (let i = 0; i < n; i++) { const j = rev[i]; if (j > i) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
+    for (let size = 2; size <= n; size <<= 1) {
+      const half = size >> 1, step = n / size;
+      for (let i = 0; i < n; i += size) {
+        for (let j = i, k = 0; j < i + half; j++, k += step) {
+          const l = j + half, c = cos[k], s = sin[k];
+          const tr = re[l] * c + im[l] * s, ti = im[l] * c - re[l] * s;
+          re[l] = re[j] - tr; im[l] = im[j] - ti; re[j] += tr; im[j] += ti;
+        }
+      }
+    }
+  }
+  // load n complex samples from interleaved src (int8 or float) starting at complex index `at`
+  load(src, at, scale) {
+    const { n, re, im, win } = this; let o = at * 2;
+    for (let i = 0; i < n; i++, o += 2) { re[i] = src[o] * win[i] * scale; im[i] = src[o + 1] * win[i] * scale; }
+  }
+  // fftshifted power, accumulated into acc (sum) and peak (max)
+  power(acc, peak) {
+    this.run();
+    const { n, re, im, norm } = this, h = n >> 1;
+    for (let i = 0; i < n; i++) {
+      const k = (i + h) & (n - 1), p = (re[i] * re[i] + im[i] * im[i]) * norm;
+      if (acc) acc[k] += p;
+      if (peak && p > peak[k]) peak[k] = p;
+    }
+  }
+}
+const fftCache = {};
+const getFFT = n => fftCache[n] || (fftCache[n] = new FFT(n));
+function toDb(lin, div = 1) {
+  const out = new Float32Array(lin.length);
+  for (let i = 0; i < lin.length; i++) out[i] = lin[i] > 0 ? 10 * Math.log10(lin[i] / div) : NaN;
+  return out;
+}
+function hideDc(db) {
+  const c = db.length >> 1;
+  const v = (db[c - 3] + db[c + 3]) / 2;
+  for (let k = c - 2; k <= c + 2; k++) db[k] = v;
+}
+function percentile(arr, p) {
+  const v = Array.from(arr).filter(Number.isFinite).sort((a, b) => a - b);
+  return v.length ? v[Math.min(v.length - 1, Math.floor(p / 100 * v.length))] : NaN;
+}
+
+// ---------------------------------------------------------------- HackRF over WebUSB
+const REQ = { MODE: 1, SAMPLE_RATE: 6, BBF: 7, BOARD_ID: 14, VERSION: 15, FREQ: 16, AMP: 17, LNA: 19, VGA: 20, ANT: 23, INIT_SWEEP: 26, BOARD_REV: 45 };
+const MODE = { OFF: 0, RX: 1, SWEEP: 5 };
+const BOARDS = { 0: 'Jellybean', 1: 'Jawbreaker', 2: 'HackRF One (OG)', 3: 'rad1o', 4: 'HackRF One', 5: 'HackRF Pro' };
+const BBF_TABLE = [1.75e6, 2.5e6, 3.5e6, 5e6, 5.5e6, 6e6, 7e6, 8e6, 9e6, 10e6, 12e6, 14e6, 15e6, 20e6, 24e6, 28e6];
+const XFER = 262144, READERS = 6;
+
+class HackRF {
+  constructor(dev) { this.dev = dev; this.q = Promise.resolve(); this.skip = 0; this.onData = null; this.reading = false; this.bytes = 0; }
+  async open() {
+    const d = this.dev;
+    if (!d.opened) await d.open();
+    if (!d.configuration || d.configuration.configurationValue !== 1) await d.selectConfiguration(1);
+    await d.claimInterface(0);
+  }
+  // control transfers are serialised: the firmware handles one at a time
+  _ser(fn) { const p = this.q.then(fn); this.q = p.catch(() => {}); return p; }
+  out(request, value = 0, index = 0, data = new Uint8Array(0)) {
+    return this._ser(async () => {
+      const r = await this.dev.controlTransferOut({ requestType: 'vendor', recipient: 'device', request, value, index }, data);
+      if (r.status !== 'ok') throw new Error(`request ${request}: ${r.status}`);
+    });
+  }
+  in(request, value, index, length) {
+    return this._ser(async () => {
+      const r = await this.dev.controlTransferIn({ requestType: 'vendor', recipient: 'device', request, value, index }, length);
+      if (r.status !== 'ok') throw new Error(`request ${request}: ${r.status}`);
+      return r.data;
+    });
+  }
+  async info() {
+    const id = (await this.in(REQ.BOARD_ID, 0, 0, 1)).getUint8(0);
+    const v = await this.in(REQ.VERSION, 0, 0, 255);
+    const version = new TextDecoder().decode(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength)).replace(/\0.*$/, '');
+    const d = this.dev;
+    return { board: BOARDS[id] || `board ${id}`, version, api: `${d.deviceVersionMajor}.${d.deviceVersionMinor}${d.deviceVersionSubminor}`, serial: d.serialNumber };
+  }
+  setMode(m) { return this.out(REQ.MODE, m); }
+  setFreq(hz) {
+    const b = new DataView(new ArrayBuffer(8)), mhz = Math.floor(hz / 1e6);
+    b.setUint32(0, mhz, true); b.setUint32(4, Math.round(hz - mhz * 1e6), true);
+    return this.out(REQ.FREQ, 0, 0, b.buffer);
+  }
+  async setSampleRate(sr) {
+    const b = new DataView(new ArrayBuffer(8));
+    b.setUint32(0, Math.round(sr), true); b.setUint32(4, 1, true);
+    await this.out(REQ.SAMPLE_RATE, 0, 0, b.buffer);
+    // same rule as libhackrf: widest filter no wider than 75% of the rate
+    let bw = BBF_TABLE[0];
+    for (const t of BBF_TABLE) if (t <= 0.75 * sr) bw = t;
+    await this.out(REQ.BBF, bw & 0xffff, bw >>> 16);
+  }
+  async setLna(v) { await this.in(REQ.LNA, 0, Math.max(0, Math.min(40, v)) & ~7, 1); }
+  async setVga(v) { await this.in(REQ.VGA, 0, Math.max(0, Math.min(62, v)) & ~1, 1); }
+  setAmp(on) { return this.out(REQ.AMP, on ? 1 : 0); }
+  setBiasTee(on) { return this.out(REQ.ANT, on ? 1 : 0); }
+  initSweep(loMHz, hiMHz, numBytes, step, offset, style) {
+    const b = new DataView(new ArrayBuffer(13));
+    b.setUint32(0, step, true); b.setUint32(4, offset, true); b.setUint8(8, style);
+    b.setUint16(9, loMHz, true); b.setUint16(11, hiMHz, true);
+    return this.out(REQ.INIT_SWEEP, numBytes & 0xffff, numBytes >>> 16, b.buffer);
+  }
+  // Bulk reads run continuously; with the transceiver off they simply stay pending.
+  // After a mode change the transfers already queued may hold stale bytes, so `skip` drops them.
+  startReaders() {
+    if (this.reading) return;
+    this.reading = true;
+    for (let i = 0; i < READERS; i++) this._loop();
+  }
+  async _loop() {
+    while (this.reading) {
+      let r;
+      try { r = await this.dev.transferIn(1, XFER); }
+      catch (e) { if (this.reading) { this.reading = false; onDeviceLost(e); } return; }
+      if (r.status === 'ok' && r.data.byteLength) {
+        this.bytes += r.data.byteLength;
+        if (this.skip > 0) { this.skip--; continue; }
+        if (this.onData) this.onData(new Int8Array(r.data.buffer, r.data.byteOffset, r.data.byteLength));
+      } else if (r.status === 'stall') {
+        try { await this.dev.clearHalt('in', 1); } catch (e) { /* ignore */ }
+      }
+    }
+  }
+}
+
+let hrf = null;
+async function attach(dev) {
+  try {
+    const h = new HackRF(dev);
+    await h.open();
+    const i = await h.info();
+    await h.setMode(MODE.OFF);
+    await h.setBiasTee(false);
+    hrf = h;
+    h.startReaders();
+    $('#devinfo').textContent = `${i.board} · firmware ${i.version} · API ${i.api} · ${(i.serial || '').slice(-8)}`;
+    for (const b of ['#lStart', '#sStart', '#lDecode']) $(b).disabled = false;
+    setStatus('ready', 'ok');
+  } catch (e) {
+    setStatus('open failed: ' + e.message, 'bad');
+    console.error(e);
+  }
+}
+function onDeviceLost(e) {
+  console.warn('device lost', e);
+  hrf = null; live.running = false; scan.running = false;
+  $('#devinfo').textContent = 'no device';
+  for (const b of ['#lStart', '#sStart', '#recBtn', '#lDecode']) $(b).disabled = true;
+  $('#lStart').textContent = 'Start'; $('#sStart').textContent = 'Start sweep';
+  setStatus('device disconnected', 'bad');
+}
+$('#connect').onclick = async () => {
+  if (!navigator.usb) { setStatus('WebUSB not available: use Chrome or Edge over https or localhost', 'bad'); return; }
+  try {
+    const d = await navigator.usb.requestDevice({ filters: [{ vendorId: 0x1d50, productId: 0x6089 }, { vendorId: 0x1d50, productId: 0x604b }, { vendorId: 0x1d50, productId: 0xcc15 }] });
+    await attach(d);
+  } catch (e) { if (e.name !== 'NotFoundError') setStatus(e.message, 'bad'); }
+};
+if (navigator.usb) {
+  navigator.usb.getDevices().then(ds => { const d = ds.find(x => x.vendorId === 0x1d50); if (d) attach(d); });
+  navigator.usb.addEventListener('disconnect', ev => { if (hrf && ev.device === hrf.dev) { hrf.reading = false; onDeviceLost('unplugged'); } });
+} else {
+  $('#connect').disabled = true;
+  $('#devinfo').textContent = 'WebUSB not supported in this browser (offline IQ still works)';
+}
+
+// ---------------------------------------------------------------- drawing
+const LUT = (() => {
+  const st = [[0, [6, 8, 22]], [0.25, [28, 42, 140]], [0.5, [18, 160, 190]], [0.7, [120, 220, 90]], [0.86, [250, 220, 40]], [1, [255, 64, 40]]];
+  const lut = new Uint8ClampedArray(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255; let k = 0;
+    while (k < st.length - 2 && t > st[k + 1][0]) k++;
+    const [t0, c0] = st[k], [t1, c1] = st[k + 1], u = (t - t0) / (t1 - t0);
+    for (let c = 0; c < 3; c++) lut[i * 3 + c] = c0[c] + (c1[c] - c0[c]) * u;
+  }
+  return lut;
+})();
+// max-pool `data` (bins evenly covering [lo,hi)) into W pixels covering [vlo,vhi)
+function pool(data, lo, hi, vlo, vhi, W) {
+  const n = data.length, out = new Float32Array(W).fill(NaN), bw = (hi - lo) / n;
+  for (let x = 0; x < W; x++) {
+    const f0 = vlo + (vhi - vlo) * x / W, f1 = vlo + (vhi - vlo) * (x + 1) / W;
+    let b0 = Math.floor((f0 - lo) / bw), b1 = Math.ceil((f1 - lo) / bw);
+    if (b1 <= b0) b1 = b0 + 1;
+    if (b1 <= 0 || b0 >= n) continue;
+    b0 = Math.max(0, b0); b1 = Math.min(n, b1);
+    let m = -Infinity;
+    for (let b = b0; b < b1; b++) if (data[b] > m) m = data[b];
+    if (m > -Infinity) out[x] = m;
+  }
+  return out;
+}
+function niceStep(span, target) {
+  const raw = span / target, p = Math.pow(10, Math.floor(Math.log10(raw)));
+  for (const m of [1, 2, 5, 10]) if (m * p >= raw) return m * p;
+  return 10 * p;
+}
+// mouse handling shared by spectrum and waterfall: drag selects, click/dblclick report a position
+function interact(canvas, { onSelect, onDbl, onHover, box }) {
+  const wrap = canvas.parentElement, sel = wrap.querySelector('.sel');
+  let start = null;
+  const pos = e => { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
+  canvas.addEventListener('mousedown', e => { start = pos(e); });
+  window.addEventListener('mouseup', e => {
+    if (!start) return;
+    const p = pos(e), s = start; start = null; if (sel) sel.style.display = 'none';
+    const dx = Math.abs(p[0] - s[0]) * canvas.clientWidth, dy = Math.abs(p[1] - s[1]) * canvas.clientHeight;
+    if (dx > 5 || (box && dy > 5)) onSelect && onSelect(Math.max(0, Math.min(s[0], p[0])), Math.min(1, Math.max(s[0], p[0])), Math.max(0, Math.min(s[1], p[1])), Math.min(1, Math.max(s[1], p[1])));
+  });
+  canvas.addEventListener('mousemove', e => {
+    const p = pos(e);
+    if (onHover) onHover(p[0], p[1]);
+    if (start && sel) {
+      const x0 = Math.min(start[0], p[0]) * 100, x1 = Math.max(start[0], p[0]) * 100;
+      const y0 = box ? Math.min(start[1], p[1]) * 100 : 0, y1 = box ? Math.max(start[1], p[1]) * 100 : 100;
+      Object.assign(sel.style, { display: 'block', left: x0 + '%', width: (x1 - x0) + '%', top: y0 + '%', height: (y1 - y0) + '%' });
+    }
+  });
+  canvas.addEventListener('mouseleave', () => { const h = wrap.querySelector('.hover'); if (h) h.textContent = ''; });
+  if (onDbl) canvas.addEventListener('dblclick', e => onDbl(pos(e)[0]));
+}
+function fitCanvas(c) {
+  const d = window.devicePixelRatio || 1, r = c.getBoundingClientRect();
+  const w = Math.max(1, Math.round(r.width * d)), h = Math.max(1, Math.round(r.height * d));
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; return true; }
+  return false;
+}
+// traces: [{db, lo, hi, color, width}]; spans: [{lo,hi,color}]; ticks: [{lo,hi,color}] drawn on top edge
+function drawSpectrum(c, vlo, vhi, traces, { ymin, ymax, spans = [], ticks = [] } = {}) {
+  fitCanvas(c);
+  const g = c.getContext('2d'), W = c.width, H = c.height, d = window.devicePixelRatio || 1;
+  g.fillStyle = '#07090c'; g.fillRect(0, 0, W, H);
+  const pooled = traces.map(t => pool(t.db, t.lo, t.hi, vlo, vhi, W));
+  if (ymin === undefined) {
+    const all = pooled.length ? pooled[0] : [];
+    const lo = percentile(all, 5), hi = Math.max(...Array.from(all).filter(Number.isFinite), lo + 20);
+    ymin = Math.floor((lo - 10) / 10) * 10; ymax = Math.ceil((hi + 5) / 10) * 10;
+  }
+  const yOf = v => H - (v - ymin) / (ymax - ymin) * H;
+  for (const s of spans) { g.fillStyle = s.color; const x0 = (s.lo - vlo) / (vhi - vlo) * W, x1 = (s.hi - vlo) / (vhi - vlo) * W; g.fillRect(x0, 0, Math.max(1, x1 - x0), H); }
+  g.font = `${11 * d}px system-ui`; g.lineWidth = 1;
+  g.strokeStyle = '#1d232c'; g.fillStyle = '#7d8798';
+  for (let v = Math.ceil(ymin / 10) * 10; v <= ymax; v += 10) { const y = yOf(v); g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); g.fillText(v + ' dB', 4 * d, y - 3 * d); }
+  const step = niceStep(vhi - vlo, Math.max(3, W / (110 * d)));
+  for (let f = Math.ceil(vlo / step) * step; f < vhi; f += step) {
+    const x = (f - vlo) / (vhi - vlo) * W; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke();
+    g.fillText(fmtHz(f), x + 3 * d, H - 4 * d);
+  }
+  traces.forEach((t, i) => {
+    const p = pooled[i]; g.strokeStyle = t.color; g.lineWidth = (t.width || 1) * d; g.beginPath(); let pen = false;
+    for (let x = 0; x < W; x++) { const v = p[x]; if (!Number.isFinite(v)) { pen = false; continue; } const y = yOf(v); if (pen) g.lineTo(x, y); else { g.moveTo(x, y); pen = true; } }
+    g.stroke();
+  });
+  for (const t of ticks) { g.fillStyle = t.color; const x0 = (t.lo - vlo) / (vhi - vlo) * W, x1 = (t.hi - vlo) / (vhi - vlo) * W; g.fillRect(x0, 0, Math.max(2, x1 - x0), 4 * d); }
+  return { pooled, ymin, ymax };
+}
+function colorRow(img, y, W, row, vmin, vmax) {
+  const k = 255 / (vmax - vmin), px = img.data;
+  for (let x = 0; x < W; x++) {
+    const v = row[x], o = (y * W + x) * 4;
+    const i = Number.isFinite(v) ? Math.max(0, Math.min(255, (v - vmin) * k | 0)) * 3 : 0;
+    px[o] = LUT[i]; px[o + 1] = LUT[i + 1]; px[o + 2] = LUT[i + 2]; px[o + 3] = 255;
+  }
+}
+// rows: array of {db, lo, hi}; newest first when `newestTop`
+function drawMatrix(c, rows, vlo, vhi, vmin, vmax) {
+  fitCanvas(c);
+  const g = c.getContext('2d'), W = c.width, H = c.height, img = g.createImageData(W, H);
+  if (!rows.length) { g.fillStyle = '#07090c'; g.fillRect(0, 0, W, H); return; }
+  const cache = new Map();
+  for (let y = 0; y < H; y++) {
+    const r = Math.min(rows.length - 1, Math.floor(y * rows.length / H));
+    let p = cache.get(r);
+    if (!p) { const R = rows[r]; p = pool(R.db, R.lo, R.hi, vlo, vhi, W); cache.set(r, p); }
+    colorRow(img, y, W, p, vmin, vmax);
+  }
+  g.putImageData(img, 0, 0);
+}
+function scrollRow(c, row, vmin, vmax) {
+  fitCanvas(c);
+  const g = c.getContext('2d'), W = c.width, H = c.height;
+  g.drawImage(c, 0, 0, W, H - 1, 0, 1, W, H - 1);
+  const img = g.createImageData(W, 1); colorRow(img, 0, W, row, vmin, vmax); g.putImageData(img, 0, 0);
+}
+function hoverText(canvas, txt) { const h = canvas.parentElement.querySelector('.hover'); if (h) h.textContent = txt; }
+
+// ---------------------------------------------------------------- gain ladder / AGC
+// one total-gain number mapped onto amp/LNA/VGA, LNA first (better noise figure), amp last
+function splitGain(T) {
+  T = Math.max(0, Math.min(116, T));
+  const amp = T > 102 ? 1 : 0, r = T - amp * 14;
+  let lna = Math.min(40, Math.floor(r / 2 / 8) * 8);
+  const vga = Math.min(62, Math.round((r - lna) / 2) * 2);
+  if (lna + vga < r) lna = Math.min(40, Math.floor((r - vga) / 8) * 8);
+  return { amp, lna, vga };
+}
+const totalGain = g => g.amp * 14 + g.lna + g.vga;
+
+// ---------------------------------------------------------------- Live
+const live = { running: false, fc: 868e6, rate: 10e6, N: 2048, acc: null, peak: null, nAcc: 0, avg: null,
+  hist: new Float64Array(129), gain: { amp: 0, lna: 16, vga: 20 }, vlo: 0, vhi: 0, rec: null, last: 0, statT: 0, statBytes: 0, holdAgc: 0 };
+
+function liveParams() {
+  live.fc = +$('#lFreq').value * 1e6; live.rate = +$('#lRate').value * 1e6; live.N = +$('#lN').value;
+  live.gain = { amp: $('#lAmp').checked ? 1 : 0, lna: +$('#lLna').value, vga: +$('#lVga').value };
+}
+function liveResetAcc() {
+  live.acc = new Float32Array(live.N); live.peak = new Float32Array(live.N); live.nAcc = 0; live.avg = null;
+  live.hist.fill(0);
+}
+function liveFullView() { live.vlo = live.fc - live.rate / 2; live.vhi = live.fc + live.rate / 2; }
+async function applyGains(g) {
+  await hrf.setLna(g.lna); await hrf.setVga(g.vga); await hrf.setAmp(g.amp);
+  $('#lLna').value = g.lna & ~7; $('#lVga').value = g.vga & ~1; $('#lAmp').checked = !!g.amp;
+}
+async function liveStart() {
+  if (!hrf) return;
+  if (scan.running) await scanStop();
+  liveParams();
+  await hrf.setMode(MODE.OFF);
+  await hrf.setSampleRate(live.rate);
+  await hrf.setFreq(live.fc);
+  await applyGains(live.gain);
+  liveResetAcc(); liveFullView();
+  hrf.skip = READERS; hrf.onData = liveData;
+  await hrf.setMode(MODE.RX);
+  live.running = true; live.statT = performance.now(); live.statBytes = hrf.bytes;
+  $('#lStart').textContent = 'Stop'; $('#recBtn').disabled = false;
+  requestAnimationFrame(liveFrame);
+}
+async function liveStop() {
+  live.running = false; if (live.rec) recFinish();
+  if (hrf) { hrf.onData = null; await hrf.setMode(MODE.OFF); }
+  $('#lStart').textContent = 'Start'; $('#recBtn').disabled = true;
+}
+// retuning while streaming corrupts samples on this hardware: stop, set, restart
+async function liveRetune(fc, rate) {
+  if (live.rec) return;
+  $('#lFreq').value = (fc / 1e6).toFixed(3);
+  if (rate) $('#lRate').value = rate / 1e6;
+  if (!live.running) return;
+  liveParams();
+  hrf.onData = null;
+  await hrf.setMode(MODE.OFF);
+  if (rate) await hrf.setSampleRate(live.rate);
+  await hrf.setFreq(live.fc);
+  liveResetAcc(); liveFullView();
+  hrf.skip = READERS; hrf.onData = liveData;
+  await hrf.setMode(MODE.RX);
+}
+function liveData(buf) {
+  if (live.rec) {
+    const r = live.rec, need = r.target - r.bytes;
+    const part = need < buf.length ? buf.slice(0, need) : buf;
+    r.chunks.push(part); r.bytes += part.length;
+    if (r.bytes >= r.target) recFinish();
+  }
+  const h = live.hist;
+  for (let i = 0; i < buf.length; i += 4) { h[Math.abs(buf[i])]++; h[Math.abs(buf[i + 1])]++; }
+  const N = live.N, fft = getFFT(N), nC = buf.length >> 1;
+  const frames = Math.min(6, Math.floor(nC / N)), stride = Math.floor(nC / frames);
+  for (let f = 0; f < frames; f++) { fft.load(buf, f * stride, 1 / 128); fft.power(live.acc, live.peak); live.nAcc++; }
+}
+function liveFrame(t) {
+  if (!live.running) return;
+  requestAnimationFrame(liveFrame);
+  if (t - live.last < 40 || live.nAcc === 0) return;
+  live.last = t;
+  const N = live.N, mean = new Float32Array(N);
+  for (let i = 0; i < N; i++) mean[i] = live.acc[i] / live.nAcc;
+  if (!live.avg) live.avg = mean; else for (let i = 0; i < N; i++) live.avg[i] = 0.7 * live.avg[i] + 0.3 * mean[i];
+  const avgDb = toDb(live.avg), peakDb = toDb(live.peak);
+  if ($('#lDc').checked) { hideDc(avgDb); hideDc(peakDb); }
+  live.acc.fill(0); live.peak.fill(0); live.nAcc = 0;
+  const lo = live.fc - live.rate / 2, hi = live.fc + live.rate / 2;
+  const floor = percentile(avgDb, 20);
+  const res = drawSpectrum($('#lSpec'), live.vlo, live.vhi, [
+    { db: peakDb, lo, hi, color: 'rgba(255,179,71,.55)' },
+    { db: avgDb, lo, hi, color: '#4fa3ff', width: 1.5 }], { ymin: Math.floor(floor / 10) * 10 - 20, ymax: Math.floor(floor / 10) * 10 + 70 });
+  live.lastPlot = { avgDb, peakDb, lo, hi };
+  scrollRow($('#lWf'), res.pooled[0], floor - 3, floor + 45);
+  liveStats(t);
+}
+function liveStats(t) {
+  const dt = (t - live.statT) / 1000;
+  if (dt < 0.3) return;
+  const msps = (hrf.bytes - live.statBytes) / 2 / dt / 1e6;
+  live.statT = t; live.statBytes = hrf.bytes;
+  const h = live.hist; let tot = 0; for (const v of h) tot += v;
+  let cum = 0, p = 0; for (let i = 0; i < h.length; i++) { cum += h[i]; if (cum >= 0.9999 * tot) { p = i; break; } }
+  const clip = tot ? (h[127] + h[128]) / tot : 0;
+  h.fill(0);
+  if ($('#lAgc').checked && !live.rec && tot) agcStep(p, clip);
+  const g = live.gain, rateOk = msps > 0.97 * live.rate / 1e6;
+  $('#lRead').innerHTML = `<span>centre <b>${fmtHz(live.fc)}</b></span><span>rate <b class="${rateOk ? '' : 'warn'}">${msps.toFixed(2)}</b> / ${live.rate / 1e6} Msps</span>` +
+    `<span>p99.99 <b class="${p > 100 ? 'warn' : ''}">${p}</b></span><span>clip <b class="${clip > 1e-5 ? 'bad' : ''}">${(clip * 100).toFixed(4)}%</b></span>` +
+    `<span>gain <b>${totalGain(g)} dB</b> (LNA ${g.lna}, VGA ${g.vga}, amp ${g.amp ? 'on' : 'off'})</span>` +
+    (live.rec ? `<span class="warn">recording ${(live.rec.bytes / live.rec.target * 100).toFixed(0)}%</span>` : '');
+}
+// same targets as rfscan/agc.py: p99.99 of |I|,|Q| in 30..100, any clipping above 1e-5 forces back-off
+async function agcStep(p, clip) {
+  if (live.holdAgc > 0) { live.holdAgc--; return; }
+  let d = 0;
+  if (clip > 1e-5) d = -6;
+  else if (p > 100) d = -Math.max(2, 20 * Math.log10(p / 60));
+  else if (p < 30) d = Math.min(10, 20 * Math.log10(60 / Math.max(p, 1)));
+  if (Math.abs(d) < 2) return;
+  const T = totalGain(live.gain), g = splitGain(Math.round(T + d));
+  if (totalGain(g) === T) return;
+  live.gain = g; live.holdAgc = 1;
+  await applyGains(g);
+}
+$('#lStart').onclick = () => live.running ? liveStop() : liveStart();
+$('#lReset').onclick = () => liveFullView();
+for (const id of ['#lLna', '#lVga', '#lAmp']) $(id).onchange = () => { if (live.running) { liveParams(); $('#lAgc').checked = false; applyGains(live.gain); } };
+$('#lFreq').onchange = () => liveRetune(+$('#lFreq').value * 1e6);
+$('#lRate').onchange = () => liveRetune(+$('#lFreq').value * 1e6, +$('#lRate').value * 1e6);
+$('#lN').onchange = () => { live.N = +$('#lN').value; liveResetAcc(); };
+interact($('#lSpec'), {
+  onSelect: (a, b) => { const s = live.vhi - live.vlo; [live.vlo, live.vhi] = [live.vlo + a * s, live.vlo + b * s]; },
+  onDbl: x => liveRetune(Math.round((live.vlo + x * (live.vhi - live.vlo)) / 1e3) * 1e3),
+  onHover: (x, y) => {
+    const f = live.vlo + x * (live.vhi - live.vlo), L = live.lastPlot;
+    let v = '';
+    if (L) { const k = Math.floor((f - L.lo) / (L.hi - L.lo) * L.avgDb.length); if (k >= 0 && k < L.avgDb.length) v = ` · ${L.avgDb[k].toFixed(1)} dB (peak ${L.peakDb[k].toFixed(1)})`; }
+    hoverText($('#lSpec'), fmtHz(f) + v);
+  }
+});
+
+// recording to SigMF, held in memory and handed over as two downloads
+function recStart() {
+  if (!live.running || live.rec) return;
+  const sec = Math.max(0.01, +$('#recSec').value);
+  const target = Math.min(Math.round(sec * live.rate) * 2, 1 << 30);
+  live.rec = { chunks: [], bytes: 0, target, fc: live.fc, rate: live.rate, gain: { ...live.gain }, t: new Date().toISOString() };
+  $('#recBtn').disabled = true;
+}
+function recFinish() {
+  const r = live.rec; live.rec = null;
+  $('#recBtn').disabled = !live.running;
+  const blob = new Blob(r.chunks, { type: 'application/octet-stream' });
+  const stamp = r.t.replace(/[-:]/g, '').replace(/\..*/, '');
+  const name = `web_${(r.fc / 1e6).toFixed(3)}MHz_${r.rate / 1e6}Msps_${stamp}`;
+  const meta = {
+    global: { 'core:datatype': 'ci8', 'core:sample_rate': r.rate, 'core:version': '1.0.0', 'core:hw': $('#devinfo').textContent,
+      'core:recorder': 'rfscan web (WebUSB)', 'core:description': `live capture at ${fmtHz(r.fc)}`,
+      'rfscan:gain': { lna_db: r.gain.lna, vga_db: r.gain.vga, amp: !!r.gain.amp } },
+    captures: [{ 'core:sample_start': 0, 'core:frequency': r.fc, 'core:datetime': r.t }],
+    annotations: []
+  };
+  const metaBlob = new Blob([JSON.stringify(meta, null, 2)], { type: 'application/json' });
+  const span = document.createElement('span');
+  const mk = (txt, fn) => { const a = document.createElement('a'); a.href = '#'; a.textContent = txt; a.onclick = e => { e.preventDefault(); fn(); }; span.append(a); };
+  span.append(`${name} (${(blob.size / 1e6).toFixed(1)} MB): `);
+  mk('save', () => { download(metaBlob, name + '.sigmf-meta'); download(blob, name + '.sigmf-data'); });
+  mk('analyse', () => { offAddSource({ name, blob, meta }); showTab('offline'); });
+  span.append(document.createElement('br'));
+  $('#reclist').prepend(span);
+}
+$('#recBtn').onclick = recStart;
+
+// ---------------------------------------------------------------- Scan (firmware sweep mode)
+const BLOCK = 16384, SWEEP_RATE = 20e6, SWEEP_OFFSET = 7.5e6, WF_COLS = 2048;
+const scan = { running: false };
+function scanInit() {
+  let lo = Math.max(0, Math.round(+$('#sLo').value)), hi = Math.round(+$('#sHi').value);
+  hi = lo + Math.max(1, Math.ceil((hi - lo) / 20)) * 20;
+  hi = Math.min(hi, 7250);
+  const N = +$('#sN').value, df = SWEEP_RATE / N, nb = Math.ceil((hi - lo) * 1e6 / df);
+  Object.assign(scan, { lo, hi, N, df, nb, sum: new Float64Array(nb), cnt: new Uint32Array(nb), max: new Float32Array(nb).fill(NaN),
+    hits: new Uint32Array(nb), floor: null, nFloorSweeps: 0, sweeps: 0, started: false, rem: null, synced: false,
+    wfRows: [], cur: new Float32Array(WF_COLS).fill(NaN), clipped: new Map(), clipCur: new Map(), vlo: lo * 1e6, vhi: hi * 1e6,
+    t0: performance.now(), lastDraw: 0, regions: [] });
+}
+async function scanStart() {
+  if (!hrf) return;
+  if (live.running) await liveStop();
+  scanInit();
+  hrf.onData = null;
+  await hrf.setMode(MODE.OFF);
+  await hrf.setSampleRate(SWEEP_RATE);
+  await hrf.out(REQ.BBF, 15e6 & 0xffff, 15e6 >>> 16);
+  await hrf.setLna(+$('#sLna').value); await hrf.setVga(+$('#sVga').value); await hrf.setAmp($('#sAmp').checked);
+  await hrf.initSweep(scan.lo, scan.hi, BLOCK, SWEEP_RATE, SWEEP_OFFSET, 1);
+  hrf.skip = READERS; hrf.onData = sweepData;
+  await hrf.setMode(MODE.SWEEP);
+  scan.running = true; $('#sStart').textContent = 'Stop sweep';
+  requestAnimationFrame(scanFrame);
+}
+async function scanStop() {
+  scan.running = false;
+  if (hrf) { hrf.onData = null; await hrf.setMode(MODE.OFF); }
+  $('#sStart').textContent = 'Start sweep';
+  scanDraw(true);
+}
+// the stream is a sequence of 16 KiB blocks, each starting 7F 7F + u64 tuning frequency
+function sweepData(chunk) {
+  let u = new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+  if (scan.rem) { const m = new Uint8Array(scan.rem.length + u.length); m.set(scan.rem); m.set(u, scan.rem.length); u = m; scan.rem = null; }
+  let off = 0;
+  if (!scan.synced) {
+    off = -1;
+    for (let i = 0; i + BLOCK + 2 <= u.length; i += 512) if (u[i] === 0x7f && u[i + 1] === 0x7f && u[i + BLOCK] === 0x7f && u[i + BLOCK + 1] === 0x7f) { off = i; break; }
+    if (off < 0) { scan.rem = u.slice(Math.max(0, u.length - BLOCK - 512)); return; }
+    scan.synced = true;
+  }
+  for (; off + BLOCK <= u.length; off += BLOCK) {
+    if (u[off] !== 0x7f || u[off + 1] !== 0x7f) { scan.synced = false; break; }
+    sweepBlock(u, off);
+  }
+  if (off < u.length) scan.rem = u.slice(off);
+}
+function sweepBlock(u, off) {
+  const lo32 = (u[off + 2] | u[off + 3] << 8 | u[off + 4] << 16 | u[off + 5] << 24) >>> 0;
+  const hi32 = (u[off + 6] | u[off + 7] << 8 | u[off + 8] << 16 | u[off + 9] << 24) >>> 0;
+  const f = hi32 * 4294967296 + lo32, loHz = scan.lo * 1e6;
+  if (f < loHz || f > scan.hi * 1e6) return;
+  if (f === loHz) { if (scan.started) sweepDone(); scan.started = true; }
+  if (!scan.started) return;
+  const N = scan.N, s8 = new Int8Array(u.buffer, u.byteOffset + off + BLOCK - 2 * N, 2 * N);
+  let clip = 0; for (let i = 0; i < s8.length; i++) if (s8[i] === 127 || s8[i] === -128) clip++;
+  if (clip > s8.length * 1e-3) scan.clipCur.set(f, true);
+  const fft = getFFT(N), pw = new Float32Array(N);
+  fft.load(s8, 0, 1 / 128); fft.power(pw, null);
+  // pw is fftshifted: index k <-> offset (k - N/2)*df from the LO at f + 7.5 MHz
+  const df = scan.df, q = N / 4, wfK = WF_COLS / (scan.nb * df);
+  for (const [k0, fs] of [[N / 2 - 3 * N / 8 + 1, f], [N / 2 + N / 8 + 1, f + 10e6]]) {
+    const g0 = Math.round((fs - loHz) / df) + 1;
+    for (let j = 0; j < q; j++) {
+      const g = g0 + j; if (g >= scan.nb) break;
+      const p = pw[k0 + j], db = 10 * Math.log10(p + 1e-20);
+      scan.sum[g] += p; scan.cnt[g]++;
+      if (!(db <= scan.max[g])) scan.max[g] = db;
+      if (scan.floor && db > scan.floor[g] + 14) scan.hits[g]++;
+      const c = Math.floor(g * df * wfK);
+      if (!(db <= scan.cur[c])) scan.cur[c] = db;
+    }
+  }
+}
+function sweepDone() {
+  scan.sweeps++;
+  if (scan.floor) scan.nFloorSweeps++;
+  scan.wfRows.unshift({ db: scan.cur, lo: scan.lo * 1e6, hi: scan.lo * 1e6 + scan.nb * scan.df });
+  if (scan.wfRows.length > 400) scan.wfRows.pop();
+  scan.cur = new Float32Array(WF_COLS).fill(NaN);
+  scan.clipped = scan.clipCur; scan.clipCur = new Map();
+}
+function scanMean() {
+  const m = new Float32Array(scan.nb);
+  for (let i = 0; i < scan.nb; i++) m[i] = scan.cnt[i] ? 10 * Math.log10(scan.sum[i] / scan.cnt[i] + 1e-20) : NaN;
+  return m;
+}
+// rolling noise floor: 30th percentile per 2 MHz chunk, then median over +-25 MHz (like sweep.noise_floor)
+function rollingFloor(db, df) {
+  const nb = db.length, cb = Math.max(8, Math.round(2e6 / df)), nc = Math.ceil(nb / cb), cp = new Float32Array(nc);
+  for (let c = 0; c < nc; c++) cp[c] = percentile(db.subarray(c * cb, Math.min(nb, (c + 1) * cb)), 30);
+  const half = Math.max(1, Math.round(25e6 / df / cb)), cf = new Float32Array(nc);
+  for (let c = 0; c < nc; c++) cf[c] = percentile(cp.subarray(Math.max(0, c - half), Math.min(nc, c + half + 1)), 50);
+  const out = new Float32Array(nb);
+  for (let i = 0; i < nb; i++) {
+    const x = (i - cb / 2) / cb, c0 = Math.max(0, Math.min(nc - 1, Math.floor(x))), c1 = Math.min(nc - 1, c0 + 1), u = Math.max(0, Math.min(1, x - c0));
+    out[i] = cf[c0] * (1 - u) + cf[c1] * u;
+  }
+  return out;
+}
+// contiguous runs of `mask`, closing gaps up to `gap` bins
+function runs(mask, gap) {
+  const out = []; let a = -1, last = -1;
+  for (let i = 0; i < mask.length; i++) {
+    if (!mask[i]) continue;
+    if (a < 0) a = i; else if (i - last > gap + 1) { out.push([a, last]); a = i; }
+    last = i;
+  }
+  if (a >= 0) out.push([a, last]);
+  return out;
+}
+function scanRegions(mean) {
+  const { nb, df, floor, hits, max } = scan, n = scan.nFloorSweeps, mask = new Uint8Array(nb);
+  const minHits = Math.max(3, 0.02 * n);
+  for (let i = 0; i < nb; i++) mask[i] = Number.isFinite(mean[i]) && (mean[i] > floor[i] + 8 || (n >= 3 && hits[i] >= minHits));
+  const lo = scan.lo * 1e6, regs = [];
+  for (const [a, b] of runs(mask, 2)) {
+    if (b - a < 1) continue;
+    let pk = -Infinity, mn = -Infinity, arg = a, hm = 0;
+    for (let i = a; i <= b; i++) { const pd = max[i] - floor[i], md = mean[i] - floor[i]; if (pd > pk) pk = pd; if (md > mn) { mn = md; arg = i; } if (hits[i] > hm) hm = hits[i]; }
+    const f0 = lo + a * df, f1 = lo + (b + 1) * df, fc = lo + arg * df, band = bandAt(fc);
+    regs.push({ f0, f1, fc, bw: f1 - f0, peak: pk, mean: mn, busy: n ? hm / n : NaN, band, note: spurNote(fc) });
+  }
+  return regs;
+}
+function scanFrame(t) {
+  if (!scan.running) return;
+  requestAnimationFrame(scanFrame);
+  if (t - scan.lastDraw < 300) return;
+  scan.lastDraw = t;
+  scanDraw(false);
+}
+function scanDraw(final) {
+  if (!scan.sum || !scan.sweeps) return;
+  const mean = scanMean();
+  scan.floor = rollingFloor(mean, scan.df);
+  scan.regions = scanRegions(mean);
+  const lo = scan.lo * 1e6, hi = lo + scan.nb * scan.df, odd = $('#sOdd').checked;
+  const shown = scan.regions.filter(r => !odd || !(r.band && COMMON.has(r.band[3])));
+  const ticks = [...scan.clipped.keys()].map(f => ({ lo: f, hi: f + 15e6, color: '#ff6b6b' }));
+  drawSpectrum($('#sSpec'), scan.vlo, scan.vhi, [
+    { db: scan.max, lo, hi, color: 'rgba(255,179,71,.45)' },
+    { db: scan.floor, lo, hi, color: 'rgba(160,170,190,.5)' },
+    { db: mean, lo, hi, color: '#4fa3ff', width: 1.3 }],
+    { spans: shown.map(r => ({ lo: r.f0, hi: r.f1, color: 'rgba(95,211,141,.18)' })), ticks });
+  scan.lastPlot = { mean, max: scan.max, floor: scan.floor, lo, hi };
+  const fl = percentile(scan.floor, 50);
+  drawMatrix($('#sWf'), scan.wfRows, scan.vlo, scan.vhi, fl - 3, fl + 40);
+  const el = (performance.now() - scan.t0) / 1000;
+  $('#sRead').innerHTML = `<span>range <b>${scan.lo}–${scan.hi} MHz</b></span><span>bin <b>${fmtHz(scan.df)}</b></span>` +
+    `<span>sweeps <b>${scan.sweeps}</b> (${(scan.sweeps / el).toFixed(2)}/s)</span><span>regions <b>${scan.regions.length}</b>${odd ? `, ${shown.length} odd` : ''}</span>` +
+    (scan.clipped.size ? `<span class="bad">${scan.clipped.size} steps clipping: lower LNA/VGA</span>` : '') + (final ? '<span>stopped</span>' : '');
+  scanTable(shown);
+}
+function scanTable(regs) {
+  const tb = $('#sTable tbody'); tb.textContent = '';
+  for (const r of regs.slice(0, 400)) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${fmtHz(r.fc)}</td><td>${fmtHz(r.bw)}</td><td>${r.peak.toFixed(1)}</td><td>${r.mean.toFixed(1)}</td>` +
+      `<td>${Number.isFinite(r.busy) ? (r.busy * 100).toFixed(0) + '%' : ''}</td><td class="band">${r.band ? r.band[2] : 'unallocated / unknown'}</td><td class="warn">${r.note}</td><td></td>`;
+    const z = document.createElement('button'); z.className = 'sec'; z.textContent = 'zoom';
+    z.onclick = () => { const m = Math.max(2e6, r.bw * 3); scan.vlo = r.fc - m / 2; scan.vhi = r.fc + m / 2; scanDraw(!scan.running); };
+    const l = document.createElement('button'); l.textContent = 'live';
+    l.onclick = () => gotoLive(r);
+    const dc = document.createElement('button'); dc.textContent = 'decode';
+    dc.onclick = () => { showTab('decodes'); decodeAt(r.fc, r.f0, r.f1, `scan region ${fmtHz(r.fc)}`); };
+    tr.lastChild.append(z, ' ', l, ' ', dc); tb.append(tr);
+  }
+}
+// tune live view onto a region; narrow signals are placed off-centre to keep them away from the DC spike
+async function gotoLive(r) {
+  const rates = [2e6, 4e6, 8e6, 10e6, 16e6, 20e6];
+  const rate = rates.find(x => x >= Math.max(2e6, r.bw * 1.6)) || 20e6;
+  const fc = r.bw < rate / 4 ? r.fc - rate / 4 : r.fc;
+  $('#lFreq').value = (fc / 1e6).toFixed(3); $('#lRate').value = rate / 1e6;
+  showTab('live');
+  if (scan.running) await scanStop();
+  if (live.running) await liveRetune(fc, rate); else await liveStart();
+}
+$('#sStart').onclick = () => scan.running ? scanStop() : scanStart();
+$('#sClear').onclick = () => { if (scan.sum) { $('#sLo').value = scan.lo; $('#sHi').value = scan.hi; $('#sN').value = scan.N; scanInit(); } };
+$('#sOdd').onchange = () => scanDraw(!scan.running);
+interact($('#sSpec'), {
+  onSelect: (a, b) => { const s = scan.vhi - scan.vlo; [scan.vlo, scan.vhi] = [scan.vlo + a * s, scan.vlo + b * s]; scanDraw(!scan.running); },
+  onDbl: () => { if (!scan.sum) return; scan.vlo = scan.lo * 1e6; scan.vhi = scan.lo * 1e6 + scan.nb * scan.df; scanDraw(!scan.running); },
+  onHover: x => {
+    if (!scan.lastPlot) return;
+    const L = scan.lastPlot, f = scan.vlo + x * (scan.vhi - scan.vlo), k = Math.round((f - L.lo) / scan.df);
+    const b = bandAt(f);
+    hoverText($('#sSpec'), `${fmtHz(f)}` + (k >= 0 && k < L.mean.length ? ` · ${L.mean[k].toFixed(1)} dB, floor ${L.floor[k].toFixed(1)}` : '') + (b ? ` · ${b[2]}` : ''));
+  }
+});
+
+// ---------------------------------------------------------------- Offline IQ
+const DTYPES = { ci8: { bps: 2, scale: 1 / 128 }, cu8: { bps: 2, scale: 1 / 128 }, ci16_le: { bps: 4, scale: 1 / 32768 }, cf32_le: { bps: 8, scale: 1 } };
+const off = { sources: [], src: null, res: null, sel: null };
+function guessType(name) {
+  if (/\.(cu8|u8)$/i.test(name)) return 'cu8';
+  if (/\.(cs16|ci16|s16)$/i.test(name)) return 'ci16_le';
+  if (/\.(cf32|cfile|fc32|raw32)$/i.test(name)) return 'cf32_le';
+  return 'ci8';
+}
+function offAddSource(s, select = true) {
+  off.sources.push(s);
+  const o = document.createElement('option'); o.value = off.sources.length - 1; o.textContent = s.name; $('#oPick').append(o);
+  if (select || !off.src) { $('#oPick').value = o.value; offSelect(s); }
+}
+function offSelect(s) {
+  off.src = s; off.res = null; off.sel = null;
+  const g = (s.meta && s.meta.global) || {}, cap = (s.meta && s.meta.captures && s.meta.captures[0]) || {};
+  let dt = (g['core:datatype'] || guessType(s.name)).replace(/^ci8.*/, 'ci8').replace(/^cu8.*/, 'cu8');
+  if (dt === 'ci16') dt = 'ci16_le'; if (dt === 'cf32') dt = 'cf32_le';
+  $('#oType').value = DTYPES[dt] ? dt : 'ci8';
+  if (g['core:sample_rate']) $('#oRate').value = g['core:sample_rate'] / 1e6;
+  if (cap['core:frequency'] !== undefined) $('#oFreq').value = cap['core:frequency'] / 1e6;
+  $('#oGo').disabled = false;
+  if (+$('#oRate').value > 0) offAnalyze();
+  else $('#oRead').innerHTML = '<span class="warn">enter the sample rate and centre frequency for this raw file</span>';
+}
+$('#oFiles').onchange = async e => {
+  const files = [...e.target.files], metas = {}, datas = [];
+  for (const f of files) {
+    if (f.name.endsWith('.sigmf-meta')) metas[f.name.slice(0, -11)] = f;
+    else datas.push(f);
+  }
+  for (const f of datas) {
+    const base = f.name.replace(/\.sigmf-data$/, '');
+    let meta = null;
+    if (metas[base]) { try { meta = JSON.parse(await metas[base].text()); } catch (err) { console.warn(err); } }
+    offAddSource({ name: base, blob: f, meta });
+  }
+};
+$('#oPick').onchange = () => offSelect(off.sources[+$('#oPick').value]);
+async function offAnalyze(t0, t1) {
+  const s = off.src; if (!s) return;
+  const type = $('#oType').value, dt = DTYPES[type], rate = +$('#oRate').value * 1e6, fc = +$('#oFreq').value * 1e6;
+  const N = +$('#oN').value, R = Math.max(10, +$('#oRows').value), total = Math.floor(s.blob.size / dt.bps), dur = total / rate;
+  t0 = t0 || 0; t1 = t1 || dur;
+  const s0 = Math.floor(t0 * rate), s1 = Math.min(total, Math.floor(t1 * rate)), rowLen = (s1 - s0) / R;
+  const frames = Math.max(1, Math.min(32, Math.floor(rowLen / N)));
+  const fft = getFFT(N), sum = new Float64Array(N), rows = [], lo = fc - rate / 2, hi = fc + rate / 2;
+  const tStart = performance.now();
+  for (let r0 = 0; r0 < R; r0 += 32) {
+    const batch = [];
+    for (let r = r0; r < Math.min(R, r0 + 32); r++) {
+      const need = frames * N, st = Math.max(0, Math.min(total - need, Math.floor(s0 + r * rowLen + (rowLen - need) / 2)));
+      batch.push(s.blob.slice(st * dt.bps, (st + need) * dt.bps).arrayBuffer());
+    }
+    const bufs = await Promise.all(batch);
+    for (const ab of bufs) {
+      let src;
+      if (type === 'ci8') src = new Int8Array(ab);
+      else if (type === 'cu8') { const u = new Uint8Array(ab); src = new Float32Array(u.length); for (let i = 0; i < u.length; i++) src[i] = u[i] - 127.5; }
+      else if (type === 'ci16_le') src = new Int16Array(ab);
+      else src = new Float32Array(ab);
+      const acc = new Float32Array(N), pk = new Float32Array(N), nf = Math.floor(src.length / 2 / N);
+      for (let f = 0; f < nf; f++) { fft.load(src, f * N, dt.scale); fft.power(acc, pk); }
+      for (let i = 0; i < N; i++) sum[i] += acc[i] / Math.max(1, nf);
+      const db = toDb(pk);
+      if ($('#oDc').checked) hideDc(db);
+      rows.push({ db, lo, hi });
+    }
+    $('#oRead').innerHTML = `<span>analysing ${Math.round(rows.length / R * 100)}%</span>`;
+  }
+  const mean = toDb(sum, R); if ($('#oDc').checked) hideDc(mean);
+  const maxh = new Float32Array(N).fill(-Infinity);
+  for (const r of rows) for (let i = 0; i < N; i++) if (r.db[i] > maxh[i]) maxh[i] = r.db[i];
+  off.res = { rows, mean, maxh, lo, hi, fc, rate, N, t0, t1, dur, s0, s1, frames, type, dt, total };
+  off.vlo = lo; off.vhi = hi; off.sel = null;
+  offCarriers();
+  offDraw();
+  const ms = performance.now() - tStart;
+  off.readout = `<span><b>${s.name}</b></span><span>${fmtHz(fc)} · ${rate / 1e6} Msps · ${type}</span><span>file ${dur.toFixed(3)} s</span>` +
+    `<span>view ${t0.toFixed(4)}–${t1.toFixed(4)} s</span><span>row ${(rowLen / rate * 1e3).toFixed(3)} ms, ${frames}×${N} FFT max-hold</span><span>${(ms / 1000).toFixed(1)} s</span>`;
+  $('#oRead').innerHTML = off.readout;
+  for (const b of ['#oFull', '#oZoom', '#oExport', '#oDecode']) $(b).disabled = false;
+  offDecoderChoice(lo, hi);
+}
+// carriers: mean above a 10th-percentile floor, or row-peaks above the peak floor in >2% of rows
+function offCarriers() {
+  const { rows, mean, maxh, lo, hi, N, fc } = off.res, df = (hi - lo) / N;
+  const floor = percentile(mean, 10), med = new Float32Array(N);
+  for (let i = 0; i < N; i++) { const col = new Float32Array(rows.length); for (let r = 0; r < rows.length; r++) col[r] = rows[r].db[i]; med[i] = percentile(col, 50); }
+  const pfloor = percentile(med, 10), duty = new Float32Array(N), mask = new Uint8Array(N);
+  for (let i = 0; i < N; i++) {
+    let c = 0; for (const r of rows) if (r.db[i] > pfloor + 10) c++;
+    duty[i] = c / rows.length;
+    mask[i] = mean[i] > floor + 6 || (rows.length > 20 && duty[i] > 0.02);
+  }
+  const regs = [];
+  for (const [a, b] of runs(mask, Math.max(2, Math.round(25e3 / df)))) {
+    let pk = -Infinity, mn = -Infinity, arg = a, du = 0;
+    for (let i = a; i <= b; i++) { if (maxh[i] - pfloor > pk) pk = maxh[i] - pfloor; if (mean[i] - floor > mn) { mn = mean[i] - floor; arg = i; } if (duty[i] > du) du = duty[i]; }
+    const f = lo + (arg + 0.5) * df;
+    regs.push({ f, bw: (b - a + 1) * df, pk, mn, du, band: bandAt(f), note: Math.abs(f - fc) < 3 * df ? 'DC offset' : spurNote(f) });
+  }
+  // receiver mirror image: a much weaker twin at 2*fc - f
+  for (const r of regs) {
+    const twin = regs.find(o => o !== r && Math.abs(o.f - (2 * fc - r.f)) < Math.max(r.bw, o.bw) / 2 + 2 * df && o.pk > r.pk + 20);
+    if (twin) r.note = r.note || `mirror of ${fmtHz(twin.f)}?`;
+  }
+  off.carriers = regs; off.floor = floor; off.pfloor = pfloor;
+  const tb = $('#oTable tbody'); tb.textContent = '';
+  for (const r of regs.slice(0, 300)) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${fmtHz(r.f)}</td><td>${fmtHz(r.bw)}</td><td>${r.pk.toFixed(1)}</td><td>${r.mn.toFixed(1)}</td><td>${(r.du * 100).toFixed(1)}%</td>` +
+      `<td class="band">${r.band ? r.band[2] : 'unallocated / unknown'}</td><td class="warn">${r.note}</td>`;
+    tr.style.cursor = 'pointer';
+    tr.onclick = () => { const m = Math.max(r.bw * 4, 20 * df); off.vlo = Math.max(lo, r.f - m / 2); off.vhi = Math.min(hi, r.f + m / 2); offDraw(); };
+    tb.append(tr);
+  }
+}
+function offDraw() {
+  const R = off.res; if (!R) return;
+  drawSpectrum($('#oSpec'), off.vlo, off.vhi, [
+    { db: R.maxh, lo: R.lo, hi: R.hi, color: 'rgba(255,179,71,.6)' },
+    { db: R.mean, lo: R.lo, hi: R.hi, color: '#4fa3ff', width: 1.3 }],
+    { spans: off.carriers.map(c => ({ lo: c.f - c.bw / 2, hi: c.f + c.bw / 2, color: 'rgba(95,211,141,.13)' })) });
+  drawMatrix($('#oWf'), R.rows, off.vlo, off.vhi, off.pfloor - 3, off.pfloor + 45);
+}
+$('#oGo').onclick = () => offAnalyze();
+$('#oFull').onclick = () => offAnalyze();
+$('#oZoom').onclick = () => {
+  const R = off.res, s = off.sel; if (!R || !s) return;
+  const v = [s.f0, s.f1];
+  offAnalyze(s.t0, s.t1).then(() => { [off.vlo, off.vhi] = v; offDraw(); });
+};
+$('#oExport').onclick = () => {
+  const R = off.res, src = off.src; if (!R) return;
+  const t0 = off.sel ? off.sel.t0 : R.t0, t1 = off.sel ? off.sel.t1 : R.t1;
+  const a = Math.floor(t0 * R.rate), b = Math.min(R.total, Math.ceil(t1 * R.rate));
+  const g = (src.meta && src.meta.global) || {}, cap = (src.meta && src.meta.captures && src.meta.captures[0]) || {};
+  const meta = { global: { ...g, 'core:datatype': R.type, 'core:sample_rate': R.rate, 'core:version': g['core:version'] || '1.0.0',
+      'core:description': `excerpt ${t0.toFixed(6)}–${t1.toFixed(6)} s of ${src.name}` },
+    captures: [{ ...cap, 'core:sample_start': 0, 'core:frequency': R.fc }], annotations: [] };
+  if (off.sel) meta.annotations.push({ 'core:sample_start': 0, 'core:sample_count': b - a, 'core:freq_lower_edge': off.sel.f0, 'core:freq_upper_edge': off.sel.f1, 'core:label': 'selection' });
+  const name = `${src.name}_${t0.toFixed(4)}s`;
+  download(new Blob([JSON.stringify(meta, null, 2)], { type: 'application/json' }), name + '.sigmf-meta');
+  download(src.blob.slice(a * R.dt.bps, b * R.dt.bps), name + '.sigmf-data');
+};
+interact($('#oSpec'), {
+  onSelect: (a, b) => { const s = off.vhi - off.vlo; [off.vlo, off.vhi] = [off.vlo + a * s, off.vlo + b * s]; offDraw(); },
+  onDbl: () => { if (off.res) { off.vlo = off.res.lo; off.vhi = off.res.hi; offDraw(); } },
+  onHover: x => { if (!off.res) return; const R = off.res, f = off.vlo + x * (off.vhi - off.vlo), k = Math.floor((f - R.lo) / (R.hi - R.lo) * R.N);
+    hoverText($('#oSpec'), fmtHz(f) + (k >= 0 && k < R.N ? ` · mean ${R.mean[k].toFixed(1)} dB, peak ${R.maxh[k].toFixed(1)} dB` : '')); }
+});
+interact($('#oWf'), {
+  box: true,
+  onSelect: (x0, x1, y0, y1) => {
+    const R = off.res; if (!R) return;
+    const s = off.vhi - off.vlo, d = R.t1 - R.t0;
+    off.sel = { f0: off.vlo + x0 * s, f1: off.vlo + x1 * s, t0: R.t0 + y0 * d, t1: R.t0 + y1 * d };
+    $('#oRead').innerHTML = off.readout + `<span class="ok">selected ${fmtHz(off.sel.f0)}–${fmtHz(off.sel.f1)}, ${off.sel.t0.toFixed(4)}–${off.sel.t1.toFixed(4)} s (${((off.sel.t1 - off.sel.t0) * 1e3).toFixed(2)} ms)</span>`;
+  },
+  onHover: (x, y) => { const R = off.res; if (!R) return; hoverText($('#oWf'), `${fmtHz(off.vlo + x * (off.vhi - off.vlo))} · t ${(R.t0 + y * (R.t1 - R.t0)).toFixed(4)} s`); }
+});
+
+// ---------------------------------------------------------------- decoders (Pyodide worker)
+// capture lengths are capped below the native hints: the whole recording is held in WebAssembly memory
+const BROWSER_MAX_S = { adsb: 5, ais: 15, ble: 3, gsm: 1, lora: 10, lte: 0.3, nr: 0.1, pager: 20, rtl433: 15 };
+const WIDEBAND = new Set(['lte', 'nr', 'gsm']);
+const dec = { worker: null, ready: null, seq: 0, pending: new Map(), info: null, runs: [], emitters: new Map(), busy: false };
+
+function decStatus(t, cls = '') { $('#decStatus').innerHTML = `<span class="${cls}">${t}</span>`; }
+function decWorker() {
+  if (!dec.worker) {
+    dec.worker = new Worker('decoder-worker.js');
+    dec.worker.onmessage = e => {
+      const m = e.data;
+      if (m.progress) { decStatus(m.progress); return; }
+      const p = dec.pending.get(m.id); dec.pending.delete(m.id);
+      if (m.ok) p.res(m); else p.rej(new Error(m.error));
+    };
+    dec.ready = decCall({ cmd: 'init' }).then(m => {
+      dec.info = m.info;
+      decStatus(`ready · in browser: ${m.info.available.join(', ')} · native only: ${m.info.native_only.join(', ')}`, 'ok');
+      offDecoderChoice();
+      return m.info;
+    }).catch(e => { decStatus('decoder runtime failed: ' + e.message, 'bad'); dec.worker = null; throw e; });
+  }
+  return dec.ready;
+}
+function decCall(msg, transfer = []) {
+  const id = ++dec.seq;
+  return new Promise((res, rej) => { dec.pending.set(id, { res, rej }); dec.worker.postMessage({ ...msg, id }, transfer); });
+}
+// band-plan decoders for any band overlapping [lo,hi], same rule as bandplan.decoders_for
+function decodersFor(lo, hi) {
+  const out = [];
+  for (const b of BANDS) if (b[0] * 1e6 < hi && b[1] * 1e6 > lo) for (const d of b[4] || []) if (!out.includes(d)) out.push(d);
+  return out;
+}
+async function decodeBlob(blob, meta, decs, source) {
+  await decWorker();
+  const run = { t: new Date(), source, decs, fc: meta.captures[0]['core:frequency'], rate: meta.global['core:sample_rate'], status: 'decoding' };
+  dec.runs.unshift(run); decRender();
+  try {
+    const buf = await blob.arrayBuffer();
+    const m = await decCall({ cmd: 'analyze', data: buf, meta, decoders: decs, bursty: !decs.some(d => WIDEBAND.has(d)) }, [buf]);
+    Object.assign(run, { status: 'done', ms: m.ms, res: m.result });
+    for (const d of m.result.decodes) {
+      const e = dec.emitters.get(d.id) || { n: 0, first: run.t };
+      Object.assign(e, { n: e.n + 1, last: run.t, d });
+      dec.emitters.set(d.id, e);
+    }
+    decStatus(`${source}: ${m.result.decodes.length} decodes, ${m.result.signals.length} signals in ${(m.ms / 1000).toFixed(1)} s`, 'ok');
+  } catch (e) {
+    Object.assign(run, { status: 'failed', error: e.message });
+    decStatus(`${source}: ${e.message}`, 'bad');
+  }
+  decRender();
+}
+const LVL_ORDER = { crc: 0, sync: 1, detect: 2 };
+function decRender() {
+  const em = [...dec.emitters.values()].sort((a, b) => (LVL_ORDER[a.d.level] - LVL_ORDER[b.d.level]) || a.d.freq_hz - b.d.freq_hz);
+  const tb = $('#emTable tbody'); tb.textContent = '';
+  for (const e of em) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><span class="lvl ${e.d.level}">${e.d.level}</span></td><td>${e.d.decoder}</td><td>${fmtHz(e.d.freq_hz)}</td><td></td><td>${e.n}×</td><td class="band"></td>`;
+    tr.children[3].textContent = e.d.id; tr.children[5].textContent = e.d.label;
+    tb.append(tr);
+  }
+  $('#decCount').textContent = em.length ? `(${em.length})` : '';
+  const box = $('#decRuns'); box.textContent = '';
+  for (const r of dec.runs) {
+    const el = document.createElement('details'); el.className = 'run'; el.open = r === dec.runs[0];
+    const n = r.res ? r.res.decodes.length : 0;
+    el.innerHTML = `<summary>${r.t.toLocaleTimeString()} · <b></b> · ${fmtHz(r.fc)} @ ${r.rate / 1e6} Msps · ${r.decs.join(', ') || 'classifier only'} · ` +
+      (r.status === 'done' ? `${n} decodes, ${r.res.signals.length} signals, ${(r.ms / 1000).toFixed(1)} s` : r.status) + `</summary>`;
+    el.querySelector('b').textContent = r.source;
+    if (r.error) { const d = document.createElement('div'); d.className = 'err'; d.textContent = r.error; el.append(d); }
+    if (r.res) {
+      if (r.res.decodes.length) el.append(table(['Level', 'Decoder', 'Frequency', 'ID', 'Label', 't'], r.res.decodes.map(d =>
+        [`<span class="lvl ${d.level}">${d.level}</span>`, d.decoder, fmtHz(d.freq_hz), esc(d.id), esc(d.label), d.t_s == null ? '' : d.t_s.toFixed(3) + ' s'])));
+      if (r.res.signals.length) el.append(table(['Signal', 'Width', 'SNR', 'Kind', 'Classified as', 'Band'], r.res.signals.map(s =>
+        [fmtHz(s.freq), fmtHz(s.bw), (s.snr || 0).toFixed(1), esc(s.kind || ''), esc(s.label || ''), esc(s.band || '')])));
+      for (const e of r.res.errors || []) { const d = document.createElement('div'); d.className = 'err'; d.textContent = e.trim().split('\n').slice(-1)[0]; el.append(d); }
+    }
+    box.append(el);
+  }
+}
+const esc = t => String(t).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+function table(head, rows) {
+  const t = document.createElement('table');
+  t.innerHTML = `<thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>`;
+  t.style.margin = '6px 0';
+  return t;
+}
+$('#decClear').onclick = () => { dec.runs = []; dec.emitters.clear(); decRender(); };
+
+// collect `bytes` of RX data; the first `discard` bytes (in-flight USB transfers) are dropped
+function grab(bytes, discard = 0) {
+  return new Promise(res => {
+    const chunks = []; let got = 0, skip = discard;
+    hrf.onData = buf => {
+      if (skip > 0) { skip -= buf.length; return; }
+      const part = got + buf.length > bytes ? buf.slice(0, bytes - got) : buf;
+      chunks.push(part); got += part.length;
+      if (got >= bytes) { hrf.onData = null; res(chunks); }
+    };
+  });
+}
+function measure(chunks) {
+  const h = new Float64Array(129); let n = 0;
+  for (const c of chunks) for (let i = 0; i < c.length; i++) h[Math.abs(c[i])]++;
+  for (const v of h) n += v;
+  let cum = 0, p = 0; for (let i = 0; i < 129; i++) { cum += h[i]; if (cum >= 0.9999 * n) { p = i; break; } }
+  return { p, clip: (h[126] + h[127] + h[128]) / n };
+}
+// dwell capture with auto gain, same rules as rfscan/agc.py (100 ms probes, extra headroom when bursty)
+async function captureIQ(fc, rate, seconds, bursty, label) {
+  await hrf.setMode(MODE.OFF);
+  hrf.onData = null;
+  await hrf.setSampleRate(rate);
+  await hrf.setFreq(fc);
+  let T = 56, g = splitGain(T), p = 0, clip = 0;
+  await hrf.setLna(g.lna); await hrf.setVga(g.vga); await hrf.setAmp(g.amp);
+  hrf.skip = READERS;
+  await hrf.setMode(MODE.RX);
+  const hi = bursty ? 75 : 100, target = bursty ? 45 : 60, inflight = READERS * XFER;
+  for (let it = 0; it < 7; it++) {
+    ({ p, clip } = measure(await grab(Math.round(rate * 0.1) * 2, it ? inflight : 0)));
+    let step = 0;
+    if (clip > 1e-5) step = -12; else if (p > hi) step = -Math.max(4, 20 * Math.log10(p / target)); else if (p < 30) step = Math.min(24, 20 * Math.log10(target / Math.max(p, 1)));
+    if (!step) break;
+    const nT = Math.max(0, Math.min(116, T + step)), ng = splitGain(Math.round(nT));
+    if (totalGain(ng) === totalGain(g)) break;
+    T = nT; g = ng;
+    await hrf.setLna(g.lna); await hrf.setVga(g.vga); await hrf.setAmp(g.amp);
+    decStatus(`${label}: auto gain ${totalGain(g)} dB (p99.99 ${p})`);
+  }
+  decStatus(`${label}: recording ${seconds} s at ${fmtHz(fc)}, ${rate / 1e6} Msps, gain ${totalGain(g)} dB`);
+  const chunks = await grab(Math.round(rate * seconds) * 2, inflight);
+  await hrf.setMode(MODE.OFF);
+  const t = new Date().toISOString();
+  const meta = {
+    global: { 'core:datatype': 'ci8', 'core:sample_rate': rate, 'core:version': '1.0.0', 'core:hw': $('#devinfo').textContent,
+      'core:recorder': 'rfscan web (WebUSB)', 'core:description': label, 'rfscan:lna': g.lna, 'rfscan:vga': g.vga, 'rfscan:amp': g.amp },
+    captures: [{ 'core:sample_start': 0, 'core:frequency': fc, 'core:datetime': t }], annotations: []
+  };
+  return { blob: new Blob(chunks), meta, name: `dec_${(fc / 1e6).toFixed(3)}MHz_${rate / 1e6}Msps_${t.replace(/[-:]/g, '').replace(/\..*/, '')}` };
+}
+// decode whatever the band plan expects between f0 and f1: one dwell per (centre, rate), like the scheduler
+async function decodeAt(fc, f0, f1, source) {
+  if (!hrf) { decStatus('connect the HackRF first', 'bad'); return; }
+  if (dec.busy) { decStatus('a decode is already running', 'warn'); return; }
+  const info = await decWorker();
+  const want = decodersFor(f0, f1);
+  const decs = want.filter(d => info.available.includes(d)), native = want.filter(d => !info.available.includes(d));
+  if (!decs.length) {
+    decStatus(native.length ? `${source}: band needs native-only decoders (${native.join(', ')}); classifying signals only` : `${source}: no decoder for this band; classifying signals only`, 'warn');
+  }
+  const groups = new Map();
+  for (const d of decs.length ? decs : ['']) {
+    const h = (d && info.hints[d]) || {};
+    const rate = Math.max(2e6, h.rate || 10e6), center = h.center || fc, sec = d ? Math.min(h.seconds || 1, BROWSER_MAX_S[d] || 2) : 0.5;
+    const k = `${center}|${rate}`, gr = groups.get(k) || { center, rate, sec: 0, decs: [] };
+    gr.sec = Math.max(gr.sec, sec); if (d) gr.decs.push(d); groups.set(k, gr);
+  }
+  const wasLive = live.running, wasScan = scan.running;
+  dec.busy = true; $('#lDecode').disabled = true;
+  try {
+    if (wasScan) await scanStop();
+    if (wasLive) await liveStop();
+    const caps = [];
+    for (const gr of groups.values()) {
+      const label = `${source} [${gr.decs.join(', ') || 'classify'}]`;
+      caps.push({ cap: await captureIQ(gr.center, gr.rate, gr.sec, !gr.decs.some(d => WIDEBAND.has(d)), label), gr, label });
+    }
+    if (wasLive) await liveStart();
+    for (const { cap, gr, label } of caps) {
+      offAddSource({ name: cap.name, blob: cap.blob, meta: cap.meta }, false);
+      await decodeBlob(cap.blob, cap.meta, gr.decs, label);
+    }
+  } catch (e) {
+    decStatus(`${source}: ${e.message}`, 'bad'); console.error(e);
+  } finally {
+    dec.busy = false; $('#lDecode').disabled = !hrf;
+  }
+}
+$('#lDecode').onclick = () => {
+  if (!hrf) return;
+  if (!live.running) liveParams();
+  const lo = live.running ? live.vlo : live.fc - live.rate / 2, hi = live.running ? live.vhi : live.fc + live.rate / 2;
+  showTab('decodes');
+  decodeAt((lo + hi) / 2, lo, hi, `live view ${fmtHz((lo + hi) / 2)}`);
+};
+// offline: decoder checkboxes, pre-ticked from the band plan for the recording's span
+function offDecoderChoice(lo, hi) {
+  const box = $('#oDecs');
+  if (lo !== undefined) { off.decSpan = [lo, hi]; }
+  const avail = dec.info ? dec.info.available : ['adsb', 'ais', 'ble', 'gsm', 'lora', 'lte', 'nr'];
+  const pre = off.decSpan ? decodersFor(...off.decSpan) : [];
+  box.textContent = '';
+  for (const d of avail) {
+    const l = document.createElement('label'); l.className = 'chk';
+    l.innerHTML = `<input type="checkbox" value="${d}" ${pre.includes(d) ? 'checked' : ''}>${d}`;
+    box.append(l);
+  }
+}
+$('#oDecode').onclick = () => {
+  const R = off.res, src = off.src; if (!R) return;
+  const decs = [...$('#oDecs').querySelectorAll('input:checked')].map(i => i.value);
+  const g = (src.meta && src.meta.global) || {}, cap = (src.meta && src.meta.captures && src.meta.captures[0]) || {};
+  const meta = { global: { ...g, 'core:datatype': R.type, 'core:sample_rate': R.rate, 'core:version': g['core:version'] || '1.0.0' },
+    captures: [{ ...cap, 'core:sample_start': 0, 'core:frequency': R.fc }], annotations: [] };
+  if (R.type === 'cu8') { decStatus('cu8 files: convert to ci8 first', 'bad'); return; }
+  showTab('decodes');
+  decodeBlob(src.blob, meta, decs, src.name);
+};
+offDecoderChoice();
+
+// ---------------------------------------------------------------- tabs / resize
+function showTab(id) {
+  for (const b of document.querySelectorAll('nav button')) b.classList.toggle('on', b.dataset.tab === id);
+  for (const s of document.querySelectorAll('section')) s.classList.toggle('on', s.id === id);
+  if (id === 'offline') offDraw();
+  if (id === 'scan') scanDraw(!scan.running);
+  if (id === 'decodes') decWorker().catch(() => {});
+}
+for (const b of document.querySelectorAll('nav button')) b.onclick = () => showTab(b.dataset.tab);
+window.addEventListener('resize', () => { offDraw(); scanDraw(!scan.running); });
+</script>
+</body>
+</html>

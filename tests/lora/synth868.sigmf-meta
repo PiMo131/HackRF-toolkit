@@ -1,0 +1,18 @@
+{
+ "global": {
+  "core:datatype": "ci8",
+  "core:sample_rate": 4000000.0,
+  "core:version": "1.0.0",
+  "core:hw": "HackRF One",
+  "core:recorder": "rfscan",
+  "core:description": "synthetic LoRa SF7 @+400k, SF9 @-400k"
+ },
+ "captures": [
+  {
+   "core:sample_start": 0,
+   "core:frequency": 868100000.0,
+   "core:datetime": "2026-10-19T10:09:17.986371Z"
+  }
+ ],
+ "annotations": []
+}

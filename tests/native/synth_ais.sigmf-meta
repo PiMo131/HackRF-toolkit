@@ -1,0 +1,19 @@
+{
+ "global": {
+  "core:datatype": "ci16_le",
+  "core:sample_rate": 2000000.0,
+  "core:version": "1.0.0",
+  "core:hw": "HackRF One",
+  "core:recorder": "rfscan",
+  "core:description": "synthetic AIS",
+  "rfscan:ci16_scale": 99046.47130703116
+ },
+ "captures": [
+  {
+   "core:sample_start": 0,
+   "core:frequency": 162000000.0,
+   "core:datetime": "2026-10-19T10:12:21.100390Z"
+  }
+ ],
+ "annotations": []
+}

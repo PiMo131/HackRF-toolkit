@@ -1,0 +1,16 @@
+# recordings and run output (GBs; see STATUS.md for the archive layout)
+iq_archive/
+runs/
+testdata
+*.sigmf-data
+*.cs8
+*.cu8
+*.cf32
+*.raw
+
+# local builds and environments
+.venv/
+third_party/
+__pycache__/
+*.pyc
+*.log
