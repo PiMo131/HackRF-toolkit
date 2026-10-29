@@ -706,6 +706,7 @@ if (typeof importScripts === 'function') {
       this.attach();
     }
     async attach() {
+      await null;                                                // let the caller register this VFO first
       try {
         if (!rtlWasm) {
           rtlLoading = rtlLoading || (async () => { importScripts('tools/rtl_433.js'); return (await fetch('tools/rtl_433.wasm')).arrayBuffer(); })();
