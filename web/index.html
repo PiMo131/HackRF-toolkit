@@ -55,6 +55,7 @@ td button{padding:1px 8px;font-size:12px}
 </style>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/5.0.0/satellite.min.js"></script>
 </head>
 <body>
 <header>
@@ -75,6 +76,7 @@ td button{padding:1px 8px;font-size:12px}
   <button data-tab="audio">Audio</button>
   <button data-tab="decodes">Decodes <span id="decCount"></span></button>
   <button data-tab="map">Map <span id="mapCount"></span></button>
+  <button data-tab="sat">Satellites</button>
 </nav>
 
 <section id="live" class="on">
@@ -214,6 +216,22 @@ td button{padding:1px 8px;font-size:12px}
     <span id="mapStat" class="note">positions from the Decodes tab (ADS-B, AIS) and the Audio tab data decoders (APRS) appear here</span>
   </div>
   <div id="mapDiv" style="height:560px;border:1px solid #2a303b;border-radius:6px;background:#07090c"></div>
+</section>
+
+<section id="sat">
+  <div class="row">
+    <label>Observer lat<input id="sLat" type="number" step="0.0001" value="51.2200" style="width:100px"></label>
+    <label>lon<input id="sLon" type="number" step="0.0001" value="4.4000" style="width:100px"></label>
+    <button id="sGeo" class="sec" title="ask the browser for your position">Use my location</button>
+    <label>Hours ahead<input id="sHours" type="number" min="1" max="72" value="24" style="width:60px"></label>
+    <label>Min. elevation °<input id="sMinEl" type="number" min="0" max="60" value="10" style="width:60px"></label>
+    <button id="sPredict">Predict passes</button>
+    <span id="sTle" class="note"></span>
+  </div>
+  <div id="sTrack" class="readout" style="display:none"></div>
+  <div class="hint">Track tunes the Audio receiver to the downlink and follows the Doppler shift every second; for the ISS digipeater the APRS decoder runs too, with positions on the Map. Meteor and ORBCOMM are spectrum/level only (no decoder yet). Times are local.</div>
+  <div class="tablewrap" style="max-height:480px"><table id="sPasses"><thead><tr><th>Satellite</th><th>Downlink</th><th>AOS</th><th>Max el</th><th>LOS</th><th>Duration</th><th></th></tr></thead><tbody></tbody></table></div>
+  <details style="margin-top:8px"><summary class="note">Orbital elements: paste fresh TLEs here if the bundled set is old</summary><textarea id="sTleText" rows="6" style="width:100%;font-family:monospace;font-size:11px"></textarea><button id="sTleUse" class="sec">Use these</button></details>
 </section>
 
 <section id="decodes">
@@ -1794,6 +1812,111 @@ function mapRender() {
 document.querySelectorAll('.mapLayer').forEach(c => c.onchange = mapRender);
 $('#mapClear').onclick = () => { mapItems.clear(); $('#mapCount').textContent = ''; mapRender(); };
 $('#aStart').onclick = () => audio.running ? audioStop() : audioStart();
+
+// ---- satellites: passes from bundled TLEs (web/tle.txt, refreshed daily) with satellite.js, Doppler tracking
+const SATS = [
+  { match: 'ISS (ZARYA)', name: 'ISS APRS digipeater', f: 145.825e6, mode: 'nfm', data: 'AFSK1200' },
+  { match: 'ISS (ZARYA)', name: 'ISS FM repeater (down)', f: 437.8e6, mode: 'nfm', data: '' },
+  { match: 'SAUDISAT 1C', name: 'SO-50 FM repeater', f: 436.795e6, mode: 'nfm', data: '' },
+  { match: 'FOX-1B', name: 'AO-91 FM repeater', f: 145.96e6, mode: 'nfm', data: '' },
+  { match: 'RS-44', name: 'RS-44 linear transponder', f: 435.64e6, mode: 'usb', data: '' },
+  { match: 'METEOR-M2 3', name: 'Meteor-M2-3 LRPT', f: 137.9e6, mode: 'nfm', data: '' },
+  { match: 'METEOR-M2 4', name: 'Meteor-M2-4 LRPT', f: 137.1e6, mode: 'nfm', data: '' },
+  { match: 'ORBCOMM', name: 'ORBCOMM', f: 137.5e6, mode: 'nfm', data: '', many: true },
+];
+const sat = { recs: [], tleAge: null, track: null, timer: null };
+function tleParse(text) {
+  const L = text.split(/\r?\n/).map(l => l.replace(/\s+$/, '')), out = [];
+  for (let i = 0; i + 2 < L.length; i++) if (L[i + 1].startsWith('1 ') && L[i + 2].startsWith('2 ')) {
+    try { const rec = satellite.twoline2satrec(L[i + 1], L[i + 2]); out.push({ name: L[i].trim(), rec, epoch: tleEpoch(L[i + 1]) }); } catch (e) { /* skip */ }
+  }
+  return out;
+}
+function tleEpoch(l1) { const yy = +l1.slice(18, 20), d = +l1.slice(20, 32), y = yy < 57 ? 2000 + yy : 1900 + yy; return new Date(Date.UTC(y, 0, 1) + (d - 1) * 86400e3); }
+async function tleLoad() {
+  let text = '';
+  try { text = localStorage.getItem('rfscan.tle') || ''; } catch (e) {}
+  if (!text) { try { text = await (await fetch('tle.txt', { cache: 'no-cache' })).text(); } catch (e) {} }
+  sat.recs = tleParse(text);
+  const newest = sat.recs.reduce((m, r) => Math.max(m, r.epoch), 0);
+  sat.tleAge = newest ? (Date.now() - newest) / 86400e3 : null;
+  $('#sTle').textContent = sat.recs.length ? `${sat.recs.length} satellites, elements ${sat.tleAge.toFixed(1)} days old${sat.tleAge > 7 ? ' (stale: paste fresh TLEs below)' : ''}` : 'no orbital elements loaded';
+}
+function observer() { return { latitude: satellite.degreesToRadians(+$('#sLat').value), longitude: satellite.degreesToRadians(+$('#sLon').value), height: 0.02 }; }
+function look(rec, date, obs) {
+  const pv = satellite.propagate(rec, date); if (!pv.position) return null;
+  const gmst = satellite.gstime(date), ecf = satellite.eciToEcf(pv.position, gmst), la = satellite.ecfToLookAngles(obs, ecf);
+  return { az: satellite.radiansToDegrees(la.azimuth), el: satellite.radiansToDegrees(la.elevation), range: la.rangeSat };
+}
+function satTargets() {
+  const out = [];
+  for (const sdef of SATS) for (const r of sat.recs) {
+    if (!r.name.startsWith(sdef.match)) continue;
+    out.push({ ...sdef, name: sdef.many ? r.name : sdef.name, rec: r.rec });
+    if (!sdef.many) break;
+  }
+  return out;
+}
+function passes(target, obs, hours, minEl) {
+  const out = [], t0 = Date.now(), step = 30e3; let up = false, aos = 0, maxEl = 0, maxT = 0;
+  for (let t = t0; t < t0 + hours * 3600e3; t += step) {
+    const l = look(target.rec, new Date(t), obs); if (!l) break;
+    if (l.el > 0 && !up) { up = true; aos = t; maxEl = l.el; maxT = t; }
+    else if (l.el > 0 && up) { if (l.el > maxEl) { maxEl = l.el; maxT = t; } }
+    else if (l.el <= 0 && up) { up = false; if (maxEl >= minEl) out.push({ target, aos: refine(target.rec, obs, aos - step, aos), los: refine(target.rec, obs, t - step, t), maxEl, maxT }); }
+  }
+  return out;
+}
+function refine(rec, obs, a, b) {                     // bisect the horizon crossing between a and b (1 s)
+  const ea = (look(rec, new Date(a), obs) || { el: -1 }).el > 0;
+  while (b - a > 1000) { const m = (a + b) / 2, em = (look(rec, new Date(m), obs) || { el: -1 }).el > 0; if (em === ea) a = m; else b = m; }
+  return (a + b) / 2;
+}
+async function satPredict() {
+  if (!sat.recs.length) await tleLoad();
+  if (typeof satellite === 'undefined') { $('#sTle').textContent = 'satellite.js did not load (offline?)'; return; }
+  try { localStorage.setItem('rfscan.obs', JSON.stringify({ lat: +$('#sLat').value, lon: +$('#sLon').value })); } catch (e) {}
+  const obs = observer(), all = [];
+  for (const t of satTargets()) all.push(...passes(t, obs, +$('#sHours').value, +$('#sMinEl').value));
+  all.sort((a, b) => a.aos - b.aos);
+  const tb = $('#sPasses tbody'); tb.textContent = '';
+  const fmtT = t => new Date(t).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  for (const p of all) {
+    const tr = document.createElement('tr'), now = Date.now() >= p.aos && Date.now() <= p.los;
+    tr.innerHTML = `<td>${esc(p.target.name)}${now ? ' <b class="ok">now</b>' : ''}</td><td>${fmtHz(p.target.f)} ${p.target.mode.toUpperCase()}</td><td>${fmtT(p.aos)}</td><td>${p.maxEl.toFixed(0)}°</td><td>${fmtT(p.los)}</td><td>${((p.los - p.aos) / 60e3).toFixed(0)} min</td><td><button class="sec">Track</button></td>`;
+    tr.querySelector('button').onclick = () => satTrack(p.target);
+    tb.append(tr);
+  }
+  if (!all.length) tb.innerHTML = '<tr><td colspan="7" class="note">no passes above the minimum elevation in this window</td></tr>';
+}
+async function satTrack(target) {
+  satUntrack();
+  sat.track = target;
+  $('#aMode').value = target.mode; $('#aData').value = target.data || ''; $('#aPagerWrap').style.display = target.data ? 'block' : 'none';
+  $('#aMute').checked = false; audioGain();
+  const i = PRESETS.findIndex(p => p.name.startsWith('Free')); $('#aPreset').value = i; audio.preset = PRESETS[i];
+  $('#aFreq').value = (target.f / 1e6).toFixed(4);
+  if (hrf) { await audioStart(); showTab('sat'); }
+  $('#sTrack').style.display = 'block';
+  sat.timer = setInterval(satStep, 1000); satStep();
+}
+function satUntrack() { if (sat.timer) clearInterval(sat.timer); sat.timer = null; sat.track = null; $('#sTrack').style.display = 'none'; }
+function satStep() {
+  const t = sat.track; if (!t) return;
+  const obs = observer(), now = new Date(), a = look(t.rec, now, obs), b = look(t.rec, new Date(now.getTime() + 1000), obs);
+  if (!a || !b) return;
+  const rr = (b.range - a.range) / 1;                          // km/s
+  const f = t.f * (1 - rr / 299792.458), dopp = f - t.f;
+  if (audio.running && Math.abs(f - audio.freq) > 40) audioTune(f);
+  let next = '';
+  if (a.el <= 0) { const p = passes(t, obs, 24, 0)[0]; next = p ? ` · rises ${new Date(p.aos).toLocaleTimeString()} (max ${p.maxEl.toFixed(0)}°)` : ''; }
+  $('#sTrack').innerHTML = `<span>tracking <b>${esc(t.name)}</b></span><span>az <b>${a.az.toFixed(0)}°</b> el <b class="${a.el > 0 ? 'ok' : 'warn'}">${a.el.toFixed(1)}°</b></span><span>range ${a.range.toFixed(0)} km, ${(rr).toFixed(2)} km/s</span><span>Doppler <b>${(dopp / 1e3).toFixed(2)} kHz</b> → ${fmtHz(f)}</span><span class="note">${a.el > 0 ? 'in view' : 'below horizon' + next}</span> <button class="sec" onclick="satUntrack()">Stop tracking</button>`;
+}
+$('#sPredict').onclick = satPredict;
+$('#sGeo').onclick = () => navigator.geolocation.getCurrentPosition(p => { $('#sLat').value = p.coords.latitude.toFixed(4); $('#sLon').value = p.coords.longitude.toFixed(4); satPredict(); }, e => { $('#sTle').textContent = 'location: ' + e.message; });
+$('#sTleUse').onclick = () => { try { localStorage.setItem('rfscan.tle', $('#sTleText').value); } catch (e) {} tleLoad().then(satPredict); };
+try { const o = JSON.parse(localStorage.getItem('rfscan.obs') || 'null'); if (o) { $('#sLat').value = o.lat; $('#sLon').value = o.lon; } } catch (e) {}
+tleLoad();
 $('#aScan').onclick = audioScan;
 $('#aFreq').onchange = () => audioTune(+$('#aFreq').value * 1e6);
 $('#aMode').onchange = () => { if (audio.running) audioTune(audio.freq, true); };
