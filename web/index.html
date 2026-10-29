@@ -161,7 +161,7 @@ td button{padding:1px 8px;font-size:12px}
     <label>Squelch dB<input id="aSq" type="range" min="-80" max="0" value="-80" style="width:120px"></label>
     <label class="chk"><input id="aStereo" type="checkbox" checked>Stereo</label>
     <label class="chk"><input id="aMute" type="checkbox">Mute</label>
-    <label>Data decoder<select id="aData"><option value="">none</option><option value="FLEX">P2000 FLEX</option><option value="FLEX,POCSAG512,POCSAG1200,POCSAG2400">Pagers FLEX + POCSAG</option><option value="AFSK1200">APRS / AX.25 (AFSK1200)</option><option value="DTMF,ZVEI1,ZVEI2,CCIR,EEA,EIA">DTMF + selcall</option><option value="MORSE_CW">Morse (CW)</option><option value="RTL433">ISM sensors (rtl_433)</option><option value="FLEX,POCSAG512,POCSAG1200,POCSAG2400,AFSK1200,DTMF">All data</option></select></label>
+    <label>Data decoder<select id="aData"><option value="">none</option><option value="FLEX">P2000 FLEX</option><option value="FLEX,POCSAG512,POCSAG1200,POCSAG2400">Pagers FLEX + POCSAG</option><option value="AFSK1200">APRS / AX.25 (AFSK1200)</option><option value="DTMF,ZVEI1,ZVEI2,CCIR,EEA,EIA">DTMF + selcall</option><option value="MORSE_CW">Morse (CW)</option><option value="RTL433">ISM sensors (rtl_433)</option><option value="RS41">Radiosonde RS41 (rs41mod)</option><option value="FLEX,POCSAG512,POCSAG1200,POCSAG2400,AFSK1200,DTMF">All data</option></select></label>
     <button id="aRec" class="sec" title="record the audio you hear to a WAV file">● Record</button>
   </div>
   <div class="row">
@@ -175,7 +175,7 @@ td button{padding:1px 8px;font-size:12px}
   <div class="row">
     <label>Data VFO MHz<input id="vFreq" type="number" step="0.0001" placeholder="in the captured 10 MHz" style="width:130px"></label>
     <label>Mode<select id="vMode"><option value="nfm">NFM</option><option value="am">AM</option><option value="usb">USB</option></select></label>
-    <label>Decoder<select id="vData"><option value="FLEX">P2000 FLEX</option><option value="FLEX,POCSAG512,POCSAG1200,POCSAG2400">Pagers</option><option value="AFSK1200">APRS</option><option value="DTMF,ZVEI1,CCIR,EEA,EIA">DTMF + selcall</option><option value="RTL433">ISM sensors (rtl_433)</option></select></label>
+    <label>Decoder<select id="vData"><option value="FLEX">P2000 FLEX</option><option value="FLEX,POCSAG512,POCSAG1200,POCSAG2400">Pagers</option><option value="AFSK1200">APRS</option><option value="DTMF,ZVEI1,CCIR,EEA,EIA">DTMF + selcall</option><option value="RTL433">ISM sensors (rtl_433)</option><option value="RS41">Radiosonde RS41</option></select></label>
     <button id="vAdd" class="sec">Add data VFO</button>
     <label class="chk"><input id="aRecTx" type="checkbox">Record each scanner transmission</label>
     <span id="vList" class="note"></span>
@@ -1375,6 +1375,7 @@ const PRESETS = [
   { name: 'APRS 144.800 (AFSK1200)', mode: 'nfm', lo: 144.8e6, hi: 144.8e6, step: 12.5e3, start: 144.8e6, pager: 'AFSK1200', mute: true },
   { name: 'ISM 433.92 sensors / remotes (rtl_433)', mode: 'nfm', lo: 433.05e6, hi: 434.79e6, step: 25e3, start: 433.92e6, pager: 'RTL433', mute: true },
   { name: 'SRD 868 wM-Bus meters (rtl_433)', mode: 'nfm', lo: 868e6, hi: 869.65e6, step: 25e3, start: 868.95e6, pager: 'RTL433', mute: true },
+  { name: 'Radiosondes 400–406 (RS41)', mode: 'nfm', lo: 400e6, hi: 406e6, step: 10e3, start: 403e6, pager: 'RS41', mute: true },
   { name: 'HF 40 m amateur (LSB) 7.0–7.2', mode: 'lsb', lo: 7e6, hi: 7.2e6, step: 1e3, start: 7.1e6 },
   { name: 'HF 20 m amateur (USB) 14.0–14.35', mode: 'usb', lo: 14e6, hi: 14.35e6, step: 1e3, start: 14.2e6 },
   { name: 'Shortwave broadcast (AM) 5.9–6.2', mode: 'am', lo: 5.9e6, hi: 6.2e6, step: 5e3, start: 6.07e6 },
@@ -1406,6 +1407,8 @@ function audioEnsureWorker() {
     if (m.spectrum) { audio.spectrum = m.spectrum; audioDraw(); }
     if (m.pager) audioPage(m.pager);
     if (m.ism) audioPage(ismPage(m.ism));
+    if (m.rs41) { const f = m.rs41; audioPage({ t: f.t, proto: 'RS41', type: 'SONDE', capcodes: [f.id || '?'], text: `#${f.frame} ${f.datetime || ''} alt ${f.alt != null ? f.alt.toFixed(0) : '?'} m vH ${f.vel_h != null ? f.vel_h.toFixed(1) : '?'} m/s vV ${f.vel_v != null ? f.vel_v.toFixed(1) : '?'} m/s hdg ${f.heading != null ? f.heading.toFixed(0) : '?'}°${f.temp != null ? ` T ${f.temp.toFixed(1)} °C` : ''}${f.humidity != null ? ` RH ${f.humidity.toFixed(0)} %` : ''} sats ${f.sats ?? '?'} batt ${f.batt ?? '?'} V`, freq: f.freq, vfo: f.vfo, raw: JSON.stringify(f), lat: f.lat, lon: f.lon });
+      if (f.lat != null) mapSet('RS41:' + f.id, { kind: 'rs41', lat: f.lat, lon: f.lon, label: `RS41 ${f.id} ${f.alt != null ? f.alt.toFixed(0) + ' m' : ''}`, t: f.t }); }
     if (m.pagerReady) $('#aPagerStat').textContent = `${m.pagerReady.startsWith('rtl_433') ? '' : 'multimon-ng '}${m.pagerReady} running, waiting for messages…`;
     if (m.pagerError) $('#aPagerStat').innerHTML = `<span class="bad">pager decoder failed: ${esc(m.pagerError)}</span>`;
   };
@@ -1438,7 +1441,7 @@ function audioPage(p) {
   const q = $('#aPagerFilter').value.trim().toLowerCase(); if (q && !tr.dataset.k.includes(q)) tr.style.display = 'none';
   tb.prepend(tr); while (tb.children.length > PAGES_MAX) tb.lastChild.remove();
   $('#aPagerStat').textContent = `${audio.pages.length} pages, last ${new Date(p.t).toLocaleTimeString()}`;
-  if (p.lat != null) mapSet('APRS:' + p.src, { kind: 'aprs', lat: p.lat, lon: p.lon, label: `${p.src} ${p.comment || ''}`.trim(), t: p.t });
+  if (p.proto === 'APRS' && p.lat != null) mapSet('APRS:' + p.src, { kind: 'aprs', lat: p.lat, lon: p.lon, label: `${p.src} ${p.comment || ''}`.trim(), t: p.t });
 }
 async function audioEnsureOutput() {
   if (audio.ctx) { if (audio.ctx.state !== 'running') await audio.ctx.resume(); return; }
@@ -1557,7 +1560,7 @@ function audioReadout() {
   if (audio.source === 'device') parts.push(`<span>gain ${totalGain(g)} dB</span>`);
   if (s.pager) parts.push(`<span>pages <b>${s.pager.count}</b></span>`);
   if (s.ctcss) parts.push(`<span>CTCSS <b>${s.ctcss.toFixed(1)}</b> Hz</span>`);
-  if (s.vfos && s.vfos[0]) parts.push(`<span>sensors <b>${s.vfos[0].pager.count}</b> (rtl_433 ${(s.vfos[0].cpu || 0).toFixed(0)} ms/2 s)</span>`);
+  if (s.vfos && s.vfos[0]) parts.push(`<span>${$('#aData').value === 'RS41' ? 'sonde frames' : 'sensors'} <b>${s.vfos[0].pager.count}</b> (decoder ${(s.vfos[0].cpu || 0).toFixed(0)} ms per window)</span>`);
   if (audio.mode === 'usb' || audio.mode === 'lsb' || audio.mode === 'cw') parts.push(`<span>AGC ${(s.ssbGain || 0).toFixed(0)} dB</span>`);
   if (s.vfos) vfoRender(s.vfos);
   $('#aRead').innerHTML = parts.join('');

@@ -93,6 +93,15 @@ Serve: `python3 -m http.server 8090 --bind 127.0.0.1 --directory web`, open http
   Not done: 16-bit sample mode of the HackRF Pro (no libhackrf 0.10 API for it; only the FPGA "narrowband filter"
   request 53, effect on the stream unknown, left out), RS41 radiosonde decoder (needs the rs1729/RS source + a sample
   recording from the internet; not fetched yet).
+* RS41 (later that evening, after the user's OK): `web/build_tools.sh rs41` clones rs1729/RS (GPL-3.0, commit 89b1ea7)
+  and builds demod/mod/rs41mod as web/tools/rs41.{js,wasm}; `web/rs41-live.js` runs it in IQ mode (`--iq2 --ecc --ptu
+  --crc --json`) on 4 s windows (1 s overlap) of 50 kHz complex baseband written as 8-bit stereo WAV, ~50 ms per window;
+  frames de-duplicated by id+frame. PTU (temperature/humidity) stays empty because the calibration subframes do not
+  survive the per-window module. Test: `tests/web/test_rs41.js RS41.wav` with the sigidwiki sample
+  (https://sigidwiki.com/images/4/43/RS41.zip, 75 kHz 8-bit IQ, sonde U4345245 near Bratislava): 32 frames in 32 s,
+  all with position. Browser: 'RS41' decoder option / "Radiosondes 400-406" preset / data VFO; verified end to end with
+  the sample upsampled to a 2 Msps ci8 file (web/rs41_test.cs8, git-ignored): 13 frames from 14 s, marker on the Map tab.
+  Not yet heard live (De Bilt / Ukkel launches ~01:00 and ~13:00 local).
   Python changes for Pyodide: `_ofdm_util.pmap` (no threads on emscripten), `recording.iq` reads via fromfile (no mmap).
 * Live rtl_433 (2026-10-29): `web/rtl433-live.js` (plain script, importScripts/require; not wired into index.html yet).
   `new Rtl433Live(create_rtl433, wasmBytes, {rate, centerHz, onMessage, chunkS: 2, mergeWindow: 0.25, dedupeS: 1, format: 'cs16',

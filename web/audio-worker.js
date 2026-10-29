@@ -724,12 +724,40 @@ if (typeof importScripts === 'function') {
     }
     status() { return { level: this.level, pager: { count: this.count, lastT: 0 }, cpu: this.ism ? this.ism.stats.msPerChunk : 0 }; }
   }
+  // RS41 radiosondes via rs41mod WASM (web/rs41-live.js): channelize to 50 kHz complex around the sonde
+  let rs41Wasm = null, rs41Loading = null;
+  class Rs41Vfo {
+    constructor(id, freq, rate, center) {
+      this.id = id; this.freq = freq; this.dec = null; this.count = 0; this.level = -100;
+      this.ch = new IqChannelizer(rate, freq - center, 50e3);
+      this.attach();
+    }
+    async attach() {
+      await null;
+      try {
+        if (!rs41Wasm) {
+          rs41Loading = rs41Loading || (async () => { importScripts('tools/rs41.js', 'rs41-live.js'); return (await fetch('tools/rs41.wasm')).arrayBuffer(); })();
+          rs41Wasm = await rs41Loading;
+        }
+        if (extra.get(this.id) !== this) return;
+        this.dec = new Rs41Live(self.create_rs41, rs41Wasm, { rate: 50e3, onFrame: f => { this.count++; postMessage({ rs41: { ...f, vfo: this.id, freq: this.freq } }); } });
+        postMessage({ pagerReady: 'rs41mod (RS41 radiosonde)', vfo: this.id });
+      } catch (err) { postMessage({ pagerError: String(err), vfo: this.id }); }
+    }
+    process(iq8) {
+      const [I, Q] = this.ch.process(iq8);
+      if (I.length) { const p = power(I, Q); this.level += (10 * Math.log10(p + 1e-12) - this.level) * 0.3; }
+      if (this.dec) this.dec.feed(I, Q);
+    }
+    status() { return { level: this.level, pager: { count: this.count, lastT: 0 }, cpu: this.dec ? this.dec.stats.msPerWindow : 0 }; }
+  }
+  function dataVfo(id, freq, kind) { return kind === 'RTL433' ? new IsmVfo(id, freq, rx.rate, rx.center) : new Rs41Vfo(id, freq, rx.rate, rx.center); }
   onmessage = e => {
     const m = e.data;
     if (m.cmd === 'start') {
       closeRx(rx); for (const r of extra.values()) closeRx(r); extra.clear();
       rx = new Receiver(m); specAcc = null; specCount = 0; postMessage({ started: true, chanRate: rx.fe.chanRate });
-      if (m.pager === 'RTL433') extra.set(0, new IsmVfo(0, m.freq, rx.rate, rx.center));
+      if (m.pager === 'RTL433' || m.pager === 'RS41') extra.set(0, dataVfo(0, m.freq, m.pager));
       else if (m.pager && (rx.demod.pager || rx.audioTap)) pagerAttach(rx, m.pager);
       return;
     }
@@ -737,7 +765,7 @@ if (typeof importScripts === 'function') {
     if (!rx) return;
     if (m.cmd === 'vfo') {                                       // {id, freq, mode, pager, nfmBw}
       closeRx(extra.get(m.id));
-      if (m.pager === 'RTL433') { extra.set(m.id, new IsmVfo(m.id, m.freq, rx.rate, rx.center)); return; }
+      if (m.pager === 'RTL433' || m.pager === 'RS41') { extra.set(m.id, dataVfo(m.id, m.freq, m.pager)); return; }
       const r = new Receiver({ ...m, rate: rx.rate, center: rx.center, dataOnly: true, squelch: -200 });
       extra.set(m.id, r); if (m.pager) pagerAttach(r, m.pager); return;
     }

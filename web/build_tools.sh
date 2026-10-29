@@ -2,7 +2,7 @@
 # Build multimon-ng (pager: FLEX/POCSAG) and rtl_433 (ISM sensors) as WebAssembly into web/tools,
 # for the browser decoders. Needs network once: Emscripten SDK + the two sources, pinned to the
 # versions the native rfscan uses (multimon-ng 1.3.1, rtl_433 25.02).
-# Usage: web/build_tools.sh [multimon-ng|rtl_433]   (default: both)
+# Usage: web/build_tools.sh [multimon-ng|rtl_433|rs41]   (default: all)
 set -e
 cd "$(dirname "$0")/.."
 T=third_party
@@ -42,8 +42,17 @@ cmake --build $T/rtl_433/build-wasm -j"$(nproc)" --target rtl_433
 cp $T/rtl_433/build-wasm/src/rtl_433.js $T/rtl_433/build-wasm/src/rtl_433.wasm web/tools/
 fi
 
+if [ "$ONLY" = all ] || [ "$ONLY" = rs41 ]; then
+# RS41 radiosonde decoder: rs1729/RS (GPL-3.0) demod/mod/rs41mod, pinned; run in IQ mode by web/rs41-live.js
+RS_COMMIT=89b1ea7f3371d99c630f6734c42014d88e667853
+if [ ! -d $T/RS ]; then git clone -q https://github.com/rs1729/RS.git $T/RS; fi
+(cd $T/RS && git fetch -q --depth 1 origin $RS_COMMIT 2>/dev/null; git checkout -q $RS_COMMIT 2>/dev/null || true)
+(cd $T/RS/demod/mod && emcc -O2 -DVER_JSN_STR=\"rfscan\" rs41mod.c demod_mod.c bch_ecc_mod.c -lm -o "$OLDPWD/web/tools/rs41.js" \
+  $LINK -sEXPORT_NAME=create_rs41 2>/dev/null)
+fi
+
 # smoke test: each factory must initialise synchronously and run main()
-for t in multimon-ng:create_multimon:-h rtl_433:create_rtl433:-V; do
+for t in multimon-ng:create_multimon:-h rtl_433:create_rtl433:-V rs41:create_rs41:-h; do
   f=${t%%:*}; r=${t#*:}; a=${r#*:}
   node -e "
     const fs = require('fs'), M = { wasmBinary: fs.readFileSync('web/tools/$f.wasm'), noInitialRun: true, print: () => {}, printErr: () => {} };
