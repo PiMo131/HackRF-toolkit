@@ -230,6 +230,7 @@ td button{padding:1px 8px;font-size:12px}
       <label class="chk"><input id="whereGeo" type="checkbox"><span style="color:#fff">●</span> browser geolocation, for comparison</label>
       <button id="whereRun" class="sec">Estimate</button>
     </div>
+    <div class="row"><label>beaconDB answer (paste, when the browser call is blocked or the cells came from the native decoder)<input id="whereCellsJson" type="text" placeholder='{"location":{"lat":..,"lng":..},"accuracy":..}' style="width:420px"></label></div>
     <div id="whereOut" class="note"></div>
   </details>
   <div id="mapDiv" style="height:560px;border:1px solid #2a303b;border-radius:6px;background:#07090c"></div>
@@ -1875,7 +1876,12 @@ async function whereRun() {
     for (const [mcc, n] of seen) { const c = COUNTRY[mcc]; est.push({ src: 'mcc', lat: c.lat, lon: c.lon, acc: c.r, n, note: `GSM cells of ${c.name} (MCC ${mcc})` }); }
     if (!seen.size) notes.push('mcc: no GSM cells decoded yet');
   }
-  if (on.has('cells')) { const c = await whereCells(); if (c.err) notes.push('cells: ' + c.err); else est.push({ src: 'cells', ...c, note: `beaconDB from ${c.n} cell${c.n > 1 ? 's' : ''}` }); }
+  if (on.has('cells')) {
+    const pasted = $('#whereCellsJson').value.trim();
+    if (pasted) { try { const j = JSON.parse(pasted); est.push({ src: 'cells', lat: j.location.lat, lon: j.location.lng, acc: j.accuracy, note: 'beaconDB answer pasted (cells from the native GSM decoder)' }); } catch (e) { notes.push('cells: pasted text is not a beaconDB answer'); } }
+    else { const c = await whereCells(); if (c.err) notes.push('cells: ' + c.err); else est.push({ src: 'cells', ...c, note: `beaconDB from ${c.n} cell${c.n > 1 ? 's' : ''}` }); }
+  }
+  for (const x of (window.whereExtra || [])) est.push(x);
   if ($('#whereGeo').checked) await new Promise(res => navigator.geolocation.getCurrentPosition(p => { est.push({ src: 'geo', lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, note: 'browser geolocation' }); res(); }, e => { notes.push('geolocation: ' + e.message); res(); }, { timeout: 8000 }));
   // fused: inverse-variance weighting of the selected estimates (country-level ones barely count)
   let fused = null;
