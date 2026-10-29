@@ -82,7 +82,17 @@ Serve: `python3 -m http.server 8090 --bind 127.0.0.1 --directory web`, open http
   FLEX|...|ALN|text / POCSAG lines. Verified: `tests/web/test_pager_stream.js testdata/p2000_169.sigmf-data 169.95 2 169.65`
   gives the same 4 pages as native (13x real time at 2 Msps); live on air from Antwerp with the whip: 4 real P2000 pages in
   the first 40 s (signal -23 dB, DSP 25 %). Preset "P2000 pagers" is opt-in (BIPT) and mutes the audio by default.
-  Next: CTCSS display, per-transmission recording.
+* 2026-10-29 evening (web): SSB/CW demod (`SsbDemod`), CTCSS Goertzel bank, multimon-ng streaming now also runs
+  AFSK1200 (APRS, aprs_mode=1 -> "APRS: SRC>DST,PATH:payload"), DTMF, ZVEI/CCIR/EEA/EIA, MORSE_CW; data-only extra
+  receivers (`vfo` / `vfo-del` worker commands, status.vfos); page: Map tab (Leaflet, cdnjs; ADS-B/AIS from decodes,
+  APRS from the data decoders), bookmarks (localStorage `rfscan.bm`), WAV recording + per-transmission recordings,
+  data VFO row, HF presets, header device panel (bias tee = vendor request 23, CLKOUT = 32; temperature request 62
+  returns nothing on API 1.10 so it stays blank). Tests: `tests/web/make_aprs_synth.py` + `test_audio_modes.js`
+  (APRS position, CTCSS 100 Hz, DTMF 1234#, USB/LSB tone) all pass. Live: P2000 main VFO + POCSAG data VFO on
+  172.4547 MHz decode together in one 10 MHz capture, DSP 30 %.
+  Not done: 16-bit sample mode of the HackRF Pro (no libhackrf 0.10 API for it; only the FPGA "narrowband filter"
+  request 53, effect on the stream unknown, left out), RS41 radiosonde decoder (needs the rs1729/RS source + a sample
+  recording from the internet; not fetched yet).
   Python changes for Pyodide: `_ofdm_util.pmap` (no threads on emscripten), `recording.iq` reads via fromfile (no mmap).
 * Scan waterfall is 2048 columns over the full range, so it is coarse when zoomed.
 * Native `rfscan capture` hit "capture timeout" at 1089 MHz/20 Msps today while hackrf_transfer worked (see item 0).

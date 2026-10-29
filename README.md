@@ -42,8 +42,14 @@ and hops the radio between 10 MHz windows for bands wider than one capture. With
 ticked (preset "P2000 pagers", opt-in), the demodulated NFM channel is streamed at 22.05 kHz into
 multimon-ng's FLEX/POCSAG decoders inside the audio worker (`web/tools/src/mm_stream.c` adds the
 streaming entry points to the WebAssembly build) and every page is listed live with capcodes, type
-and text. The DSP (`web/audio-worker.js`) is plain JavaScript in a worker and uses about
-a quarter of one core at 10 Msps; audio goes out through an AudioWorklet.
+and text. The same path decodes **APRS/AX.25 (AFSK1200), DTMF, ZVEI/CCIR/EEA/EIA selcall and
+Morse**; extra **data VFOs** run more decoders on other channels of the same 10 MHz capture, so one
+capture can play a voice channel while logging P2000, a POCSAG network and APRS at once. Modes are
+WFM stereo, NFM (with **CTCSS** readout), AM, **USB/LSB/CW** (HF works on the HackRF Pro). There are
+bookmarks, a **Record** button (WAV) and per-transmission recordings in scanner mode, and a **Map**
+tab that plots ADS-B aircraft, AIS ships and APRS stations from the decoders. The header shows the
+HackRF Pro extras: bias tee and CLKOUT. The DSP (`web/audio-worker.js`) is plain JavaScript in a
+worker and uses about a quarter of one core per VFO at 10 Msps; audio goes out through an AudioWorklet.
 
 Source is in `web/`. `web/build.sh` refreshes the Python copy in `web/py` after changes to
 `rfscan/`; `web/build_tools.sh` rebuilds the two WebAssembly tools. GitHub Pages deploys `web/`
