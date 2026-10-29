@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import agc, bandplan, decoders, pipeline, recording, sweep
+from . import agc, bandplan, decoders, monitor, pipeline, recording, sweep
 from .db import DB
 from .hackrf import HackRF
 
@@ -104,7 +104,7 @@ def plan_windows(regions, f_lo, f_hi, skip_categories=(), skip_decoders=()):
 class Scanner:
     def __init__(self, out_dir, f_lo=1, f_hi=6000, survey_s=30, resurvey_s=900, duration=None,
                  watch=True, watch_names=None, storage_gb=10.0, workers=None, bin_w=100e3,
-                 keep_wide=True, focus="all", log=print):
+                 keep_wide=True, focus="all", log=print, baseline=None):
         self.out = out_dir
         os.makedirs(os.path.join(out_dir, "iq"), exist_ok=True)
         os.makedirs(os.path.join(out_dir, "surveys"), exist_ok=True)
@@ -132,6 +132,12 @@ class Scanner:
         self.targets = []
         self.t0 = time.time()
         self.wide_kept = set()
+        # new-signal alerts + heatmap/occupancy after each survey (earlier surveys and the baseline run)
+        try:
+            self.monitor = monitor.Tracker(baseline)
+        except Exception as e:
+            self.log(f"[warn] baseline {baseline} not usable ({e}); alerting against this run only")
+            self.monitor = monitor.Tracker(None)
 
     # ------------------------------------------------------------ helpers
     def _event(self, etype, **kw):
@@ -162,6 +168,15 @@ class Scanner:
         for svc, rs in sorted(by_cat.items(), key=lambda kv: -max(r.snr_db for r in kv[1]))[:25]:
             self.log(f"    {len(rs):3d} x  {svc[:55]:55s} best {max(r.snr_db for r in rs):4.1f} dB")
         self._event("survey", id=sid, n_regions=len(regions), n_real=len(real))
+        try:
+            new = self.monitor.add_survey(sid, time.time(), monitor.regions_from_objs(regions, spurs, bands), spec)
+            for n in sorted(new, key=lambda n: -n["snr"]):
+                self.log(f"  NEW SIGNAL {n['f_center']/1e6:10.3f} MHz  bw {n['bw']/1e3:6.0f} kHz  {n['snr']:4.1f} dB"
+                         f"  (baseline {n['baseline_db']} dB)  {n['band'][:45]}")
+                self._event("new_signal", survey=sid, **n)
+            self.monitor.write(self.out)
+        except Exception as e:   # monitoring must never stop the scan
+            self.log(f"[warn] monitor: {e!r}")
         wins = plan_windows(regions, self.f_lo * 1e6, self.f_hi * 1e6, self.skip_cats, self.skip_decs)
         self.targets = sorted(wins, key=lambda t: -t.priority) + list(self.watch)
         self.log(f"[plan] {len(wins)} capture windows + {len(self.watch)} watch bands"

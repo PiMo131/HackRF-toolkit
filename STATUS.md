@@ -86,3 +86,30 @@ Serve: `python3 -m http.server 8090 --bind 127.0.0.1 --directory web`, open http
   Python changes for Pyodide: `_ofdm_util.pmap` (no threads on emscripten), `recording.iq` reads via fromfile (no mmap).
 * Scan waterfall is 2048 columns over the full range, so it is coarse when zoomed.
 * Native `rfscan capture` hit "capture timeout" at 1089 MHz/20 Msps today while hackrf_transfer worked (see item 0).
+
+## Long-term monitoring (rfscan/monitor.py, 2026-10-29 evening)
+Per run: time-vs-frequency heatmap of all surveys, per-band occupancy over time and **new-signal alerts**
+against a baseline (earlier surveys of the run, plus optionally a baseline run). numpy only (no matplotlib/PIL
+in the venv): the PNG is written by a small built-in encoder, the report embeds it in an SVG with axes.
+* `./rfscan.sh monitor <run> [--baseline <run>] [--f-tol-khz 150] [--db-tol 6] [--min-snr 10] [--min-persist N] [--log-events]`
+  prints the new-signal list (persistent ones first, one-offs last) and writes `<run>/monitor/heatmap.png`,
+  `heatmap.npz` and `summary.json` (surveys, new signals with persistence, band occupancy series).
+  A region is "new" when no baseline region within f_tol was within db_tol of its SNR **and** the baseline
+  max spectrum (mean power above floor) within f_tol is more than db_tol below it; `persisted` = later
+  surveys of the run that still show a region there. Spur-flagged regions are ignored on both sides.
+* Live: `rfscan scan [--baseline <run>]` runs the same `monitor.Tracker` after each survey (milliseconds, in
+  memory), logs `NEW SIGNAL` lines, writes `new_signal` events to events.jsonl and refreshes `monitor/`.
+  The scan loop is otherwise unchanged. `report.html` (and so the dashboard) has a "Monitoring" block:
+  heatmap with first-appearance markers, new-signal table (one-offs collapsed), band occupancy sparklines;
+  it reuses `monitor/` when it covers all surveys, else recomputes without a baseline.
+* With a baseline run the heatmap gets the baseline surveys as top rows (red separator), so it also works across runs.
+* Test: `.venv/bin/python tests/monitor/test_monitor.py` (also pytest-compatible): runs on today's run with
+  the 10-19 baseline, injects a +30 dB region into a copy of the last survey, checks it is reported new while a
+  region copied from the previous survey is not, and checks heatmap.png/npz + summary.json contents.
+* Validated on `runs/20261029_104759` vs `iq_archive/2026-10-19_antwerp/scan1_full_1400`: 189 new regions, of
+  which 144 are one-offs (almost all in the noisy first survey 10:48: 3.5–3.7, 4.1–4.2, 4.9, 5.75–5.9 GHz, 30 dB,
+  occupancy 0.05–0.2; likely sweep glitches). Persistent: the **2289.79 MHz** (2.06 MHz, 21.5 dB, baseline 7 dB) and
+  **2284.55 MHz** (1.3 MHz, 14.8 dB) bursts in all 6 surveys (2297.25 MHz was already there on 10-19); the **172.464 MHz POCSAG** channel
+  (14.3 dB, occupancy 0.57, first in survey 2 at 11:04, 8 dB in survey 1, absent on 10-19); plus things that
+  differ from the 10-19 site: GSM 900 DL at 940 MHz (+32 dB), LTE B20 813 MHz, B32 SDL 1471/1478 MHz, 1120 MHz DME,
+  TETRA 390.5/384.5 MHz. The first survey of a run is the noisiest; `--min-persist 1` hides the one-offs.

@@ -53,6 +53,8 @@ td button{padding:1px 8px;font-size:12px}
   td.page-ambu{color:#ffb380}td.page-fire{color:#ff7a7a}td.page-test{color:#8a93a3}
   #aPages td:last-child{white-space:normal;max-width:700px}
 </style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 </head>
 <body>
 <header>
@@ -60,6 +62,11 @@ td button{padding:1px 8px;font-size:12px}
   <button id="connect">Connect HackRF</button>
   <span id="devinfo">no device</span>
   <span id="status"></span>
+  <span id="devctl" style="display:none;margin-left:auto;gap:10px;align-items:center">
+    <label class="chk" title="3.3 V / 50 mA on the antenna port for an active antenna or LNA"><input id="dBias" type="checkbox">Bias tee</label>
+    <label class="chk" title="10 MHz reference out on CLKOUT"><input id="dClkout" type="checkbox">CLKOUT</label>
+    <span id="dTemp" class="note"></span>
+  </span>
 </header>
 <nav>
   <button data-tab="live" class="on">Live</button>
@@ -67,6 +74,7 @@ td button{padding:1px 8px;font-size:12px}
   <button data-tab="offline">Offline IQ</button>
   <button data-tab="audio">Audio</button>
   <button data-tab="decodes">Decodes <span id="decCount"></span></button>
+  <button data-tab="map">Map <span id="mapCount"></span></button>
 </nav>
 
 <section id="live" class="on">
@@ -142,8 +150,10 @@ td button{padding:1px 8px;font-size:12px}
 <section id="audio">
   <div class="row">
     <label>Preset<select id="aPreset"></select></label>
-    <label>Mode<select id="aMode"><option value="wfm">FM broadcast (stereo)</option><option value="nfm">NFM voice</option><option value="am">AM (airband)</option></select></label>
+    <label>Mode<select id="aMode"><option value="wfm">FM broadcast (stereo)</option><option value="nfm">NFM voice</option><option value="am">AM (airband)</option><option value="usb">USB</option><option value="lsb">LSB</option><option value="cw">CW</option></select></label>
     <label>Frequency MHz<input id="aFreq" type="number" step="0.001" value="100.000" style="width:110px"></label>
+    <label>Bookmarks<select id="aBm" style="width:160px"><option value="">…</option></select></label>
+    <button id="aBmAdd" class="sec" title="bookmark this frequency, mode and decoder">★</button><button id="aBmDel" class="sec" title="remove the selected bookmark">✕</button>
     <button id="aDown" class="sec">−</button><button id="aUp" class="sec">+</button>
     <button id="aStart" disabled>Listen</button>
     <button id="aScan" class="sec" disabled>Find stations</button>
@@ -151,7 +161,8 @@ td button{padding:1px 8px;font-size:12px}
     <label>Squelch dB<input id="aSq" type="range" min="-80" max="0" value="-80" style="width:120px"></label>
     <label class="chk"><input id="aStereo" type="checkbox" checked>Stereo</label>
     <label class="chk"><input id="aMute" type="checkbox">Mute</label>
-    <label class="chk"><input id="aPager" type="checkbox">Decode pagers (FLEX / POCSAG)</label>
+    <label>Data decoder<select id="aData"><option value="">none</option><option value="FLEX">P2000 FLEX</option><option value="FLEX,POCSAG512,POCSAG1200,POCSAG2400">Pagers FLEX + POCSAG</option><option value="AFSK1200">APRS / AX.25 (AFSK1200)</option><option value="DTMF,ZVEI1,ZVEI2,CCIR,EEA,EIA">DTMF + selcall</option><option value="MORSE_CW">Morse (CW)</option><option value="FLEX,POCSAG512,POCSAG1200,POCSAG2400,AFSK1200,DTMF">All data</option></select></label>
+    <button id="aRec" class="sec" title="record the audio you hear to a WAV file">● Record</button>
   </div>
   <div class="row">
     <label class="chk"><input id="aScanOn" type="checkbox">Scanner: auto-lock on active channels</label>
@@ -160,6 +171,14 @@ td button{padding:1px 8px;font-size:12px}
     <label>Priority MHz<input id="aPrio" type="number" step="0.0001" placeholder="none" style="width:110px"></label>
     <span id="aLock" class="readout" style="font-size:15px;margin:0"></span>
     <button id="aLogClear" class="sec">Clear log</button>
+  </div>
+  <div class="row">
+    <label>Data VFO MHz<input id="vFreq" type="number" step="0.0001" placeholder="in the captured 10 MHz" style="width:130px"></label>
+    <label>Mode<select id="vMode"><option value="nfm">NFM</option><option value="am">AM</option><option value="usb">USB</option></select></label>
+    <label>Decoder<select id="vData"><option value="FLEX">P2000 FLEX</option><option value="FLEX,POCSAG512,POCSAG1200,POCSAG2400">Pagers</option><option value="AFSK1200">APRS</option><option value="DTMF,ZVEI1,CCIR,EEA,EIA">DTMF + selcall</option></select></label>
+    <button id="vAdd" class="sec">Add data VFO</button>
+    <label class="chk"><input id="aRecTx" type="checkbox">Record each scanner transmission</label>
+    <span id="vList" class="note"></span>
   </div>
   <div id="aOptin" class="note" style="display:none;margin-bottom:8px"><label class="chk"><input id="aOptinChk" type="checkbox">I understand that in Belgium listening to aviation, maritime and emergency-service frequencies without the parties' consent is not permitted (BIPT); these presets are my own choice.</label></div>
   <div class="readout" id="aRead">Listen plays the demodulated audio in the browser. FM broadcast gives stereo and RDS; "Find stations" sweeps the band.</div>
@@ -172,6 +191,7 @@ td button{padding:1px 8px;font-size:12px}
     <div class="plotwrap"><canvas id="aBank" style="height:120px"></canvas><div class="hover"></div></div>
     <div class="tablewrap" style="max-height:220px"><table id="aLog"><thead><tr><th>Time</th><th>Channel</th><th>Duration</th><th>Peak over floor</th></tr></thead><tbody></tbody></table></div>
   </div>
+  <div id="aRecList" class="row"></div>
   <div id="aPagerWrap" style="display:none">
     <div class="hint">Pager feed: the NFM channel is streamed into multimon-ng (WebAssembly) and every FLEX / POCSAG page appears here as it arrives. Capcodes identify the receiving pager group; P2000 messages start with the priority (A1/A2/B1/B2 ambulance, P 1/P 2 fire brigade).</div>
     <div class="row">
@@ -180,8 +200,20 @@ td button{padding:1px 8px;font-size:12px}
       <button id="aPagerClear" class="sec">Clear</button>
       <button id="aPagerCsv" class="sec">Export CSV</button>
     </div>
-    <div class="tablewrap" style="max-height:320px"><table id="aPages"><thead><tr><th>Time</th><th>Capcode(s)</th><th>Type</th><th>Message</th></tr></thead><tbody></tbody></table></div>
+    <div class="tablewrap" style="max-height:320px"><table id="aPages"><thead><tr><th>Time</th><th>Freq</th><th>From / capcode</th><th>Type</th><th>Message</th></tr></thead><tbody></tbody></table></div>
   </div>
+</section>
+
+<section id="map">
+  <div class="row">
+    <label class="chk"><input class="mapLayer" data-kind="adsb" type="checkbox" checked><span style="color:#ffb380">●</span> ADS-B aircraft</label>
+    <label class="chk"><input class="mapLayer" data-kind="ais" type="checkbox" checked><span style="color:#6fb3ff">●</span> AIS ships</label>
+    <label class="chk"><input class="mapLayer" data-kind="aprs" type="checkbox" checked><span style="color:#7ee787">●</span> APRS stations</label>
+    <label class="chk"><input class="mapLayer" data-kind="rs41" type="checkbox" checked><span style="color:#d2a8ff">●</span> Radiosondes</label>
+    <button id="mapClear" class="sec">Clear</button>
+    <span id="mapStat" class="note">positions from the Decodes tab (ADS-B, AIS) and the Audio tab data decoders (APRS) appear here</span>
+  </div>
+  <div id="mapDiv" style="height:560px;border:1px solid #2a303b;border-radius:6px;background:#07090c"></div>
 </section>
 
 <section id="decodes">
@@ -282,7 +314,7 @@ function percentile(arr, p) {
 }
 
 // ---------------------------------------------------------------- HackRF over WebUSB
-const REQ = { MODE: 1, SAMPLE_RATE: 6, BBF: 7, BOARD_ID: 14, VERSION: 15, FREQ: 16, AMP: 17, LNA: 19, VGA: 20, ANT: 23, INIT_SWEEP: 26, BOARD_REV: 45 };
+const REQ = { MODE: 1, SAMPLE_RATE: 6, BBF: 7, BOARD_ID: 14, VERSION: 15, FREQ: 16, AMP: 17, LNA: 19, VGA: 20, ANT: 23, INIT_SWEEP: 26, CLKOUT: 32, CLKIN_STATUS: 44, BOARD_REV: 45, TEMPERATURE: 62 };
 const MODE = { OFF: 0, RX: 1, SWEEP: 5 };
 const BOARDS = { 0: 'Jellybean', 1: 'Jawbreaker', 2: 'HackRF One (OG)', 3: 'rad1o', 4: 'HackRF One', 5: 'HackRF Pro' };
 const BBF_TABLE = [1.75e6, 2.5e6, 3.5e6, 5e6, 5.5e6, 6e6, 7e6, 8e6, 9e6, 10e6, 12e6, 14e6, 15e6, 20e6, 24e6, 28e6];
@@ -367,6 +399,15 @@ class HackRF {
 }
 
 let hrf = null;
+// HackRF Pro extras: bias tee (3.3 V on the antenna port), CLKOUT, CLKIN presence, board temperature
+async function devPoll() {
+  if (!hrf) return;
+  try { const t = (await hrf.in(REQ.TEMPERATURE, 0, 0, 1)).getInt8(0); const c = (await hrf.in(REQ.CLKIN_STATUS, 0, 0, 1)).getUint8(0); $('#dTemp').textContent = `${t} °C · CLKIN ${c ? 'present' : 'none'}`; }
+  catch (e) { $('#dTemp').textContent = ''; }
+  setTimeout(devPoll, 30000);
+}
+$('#dBias').onchange = async () => { if (hrf) { await hrf.setBiasTee($('#dBias').checked); setStatus(`bias tee ${$('#dBias').checked ? 'on' : 'off'}`, 'ok'); } };
+$('#dClkout').onchange = async () => { if (hrf) { await hrf.out(REQ.CLKOUT, $('#dClkout').checked ? 1 : 0); setStatus(`CLKOUT ${$('#dClkout').checked ? 'on' : 'off'}`, 'ok'); } };
 async function attach(dev) {
   try {
     const h = new HackRF(dev);
@@ -377,6 +418,7 @@ async function attach(dev) {
     hrf = h;
     h.startReaders();
     $('#devinfo').textContent = `${i.board} · firmware ${i.version} · API ${i.api} · ${(i.serial || '').slice(-8)}`;
+    $('#devctl').style.display = 'inline-flex'; $('#dBias').checked = false; devPoll();
     for (const b of ['#lStart', '#sStart', '#lDecode', '#aStart', '#aScan']) $(b).disabled = false;
     setStatus('ready', 'ok');
   } catch (e) {
@@ -1150,6 +1192,7 @@ function decRender() {
     tb.append(tr);
   }
   $('#decCount').textContent = em.length ? `(${em.length})` : '';
+  mapCollect();
   const box = $('#decRuns'); box.textContent = '';
   for (const r of dec.runs) {
     const el = document.createElement('details'); el.className = 'run'; el.open = r === dec.runs[0];
@@ -1329,10 +1372,14 @@ const PRESETS = [
   { name: 'Airband 118–137 (AM) — opt-in', mode: 'am', lo: 118e6, hi: 137e6, step: 25e3, start: 121.5e6, optin: true },
   { name: 'Marine VHF 156–162 — opt-in', mode: 'nfm', lo: 156e6, hi: 162.05e6, step: 25e3, start: 156.8e6, optin: true },
   { name: 'P2000 pagers 169.650 (FLEX) — opt-in', mode: 'nfm', lo: 169.65e6, hi: 169.65e6, step: 12.5e3, start: 169.65e6, optin: true, pager: 'FLEX', mute: true },
+  { name: 'APRS 144.800 (AFSK1200)', mode: 'nfm', lo: 144.8e6, hi: 144.8e6, step: 12.5e3, start: 144.8e6, pager: 'AFSK1200', mute: true },
+  { name: 'HF 40 m amateur (LSB) 7.0–7.2', mode: 'lsb', lo: 7e6, hi: 7.2e6, step: 1e3, start: 7.1e6 },
+  { name: 'HF 20 m amateur (USB) 14.0–14.35', mode: 'usb', lo: 14e6, hi: 14.35e6, step: 1e3, start: 14.2e6 },
+  { name: 'Shortwave broadcast (AM) 5.9–6.2', mode: 'am', lo: 5.9e6, hi: 6.2e6, step: 5e3, start: 6.07e6 },
   { name: 'Free tuning', mode: 'nfm', lo: 1e6, hi: 6000e6, step: 12.5e3, start: 433.92e6 },
 ];
 const audio = { lockouts: new Set(), win: 0, running: false, source: null, worker: null, ctx: null, node: null, center: 0, rate: AUDIO_RATE_DEV, freq: 100e6, mode: 'wfm',
-  preset: PRESETS[0], gain: { amp: 0, lna: 24, vga: 20 }, hist: new Float64Array(129), nHist: 0, holdAgc: 0, spectrum: null, stations: [], file: null, status: {}, fill: 0, pages: [] };
+  preset: PRESETS[0], gain: { amp: 0, lna: 24, vga: 20 }, hist: new Float64Array(129), nHist: 0, holdAgc: 0, spectrum: null, stations: [], file: null, status: {}, fill: 0, pages: [], vfos: new Map(), nextVfo: 1, rec: null, recChunks: [], recTx: null };
 
 for (const [i, p] of PRESETS.entries()) { const o = document.createElement('option'); o.value = i; o.textContent = p.name; $('#aPreset').append(o); }
 function audioPreset(i) {
@@ -1340,7 +1387,7 @@ function audioPreset(i) {
   $('#aMode').value = p.mode; $('#aFreq').value = (p.start / 1e6).toFixed(3); $('#aFreq').step = p.step / 1e6;
   $('#aOptin').style.display = p.optin ? 'block' : 'none';
   $('#aScan').textContent = p.mode === 'wfm' ? 'Find stations' : 'Find active channels';
-  $('#aPager').checked = !!p.pager; $('#aMute').checked = !!p.mute; audioGain();
+  $('#aData').value = p.pager || ''; $('#aMute').checked = !!p.mute; audioGain();
   $('#aPagerWrap').style.display = p.pager ? 'block' : 'none';
   if (audio.running) audioTune(p.start, true);
 }
@@ -1352,7 +1399,7 @@ function audioEnsureWorker() {
   audio.worker = new Worker('audio-worker.js');
   audio.worker.onmessage = e => {
     const m = e.data;
-    if (m.audio) { if (audio.node) audio.node.port.postMessage({ audio: m.audio }, [m.audio]); return; }
+    if (m.audio) { if (audio.rec || audio.recTx) audio.recChunks.push(new Float32Array(m.audio).slice()); if (audio.node) audio.node.port.postMessage({ audio: m.audio }, [m.audio]); return; }
     if (m.status) { audio.status = m.status; audioReadout(); if (m.status.bank) audioBank(m.status.bank); }
     if (m.spectrum) { audio.spectrum = m.spectrum; audioDraw(); }
     if (m.pager) audioPage(m.pager);
@@ -1362,8 +1409,8 @@ function audioEnsureWorker() {
 }
 // which multimon-ng demodulators the pager feed runs (FLEX for the P2000 preset, all pager modes elsewhere)
 function pagerDemods(mode) {
-  if (mode !== 'nfm' || !$('#aPager').checked) return null;
-  return audio.preset.pager || 'FLEX,POCSAG512,POCSAG1200,POCSAG2400';
+  if (mode === 'wfm' || !$('#aData').value) return null;
+  return $('#aData').value;
 }
 function audioGain() { if (audio.node) audio.node.port.postMessage({ gain: $('#aMute').checked ? 0 : +$('#aVol').value / 100 }); }
 // P2000 message classes by the leading priority code (ambulance A1/A2/B1/B2, fire brigade P 1/P 2/PRIO)
@@ -1378,10 +1425,11 @@ function audioPage(p) {
   audio.pages.push(p); while (audio.pages.length > PAGES_MAX) audio.pages.shift();
   const tb = $('#aPages tbody'), tr = document.createElement('tr'), cls = pageClass(p.text);
   tr.dataset.k = `${p.capcodes.join(' ')} ${p.text}`.toLowerCase();
-  tr.innerHTML = `<td>${new Date(p.t).toLocaleTimeString()}</td><td class="mono">${esc(p.capcodes.join(' '))}</td><td>${esc(p.proto === 'FLEX' ? p.type : p.proto + ' ' + p.type)}</td><td${cls ? ` class="page-${cls}"` : ''}>${esc(p.text)}</td>`;
+  tr.innerHTML = `<td>${new Date(p.t).toLocaleTimeString()}</td><td>${p.freq ? fmtHz(p.freq) : ''}</td><td class="mono">${esc(p.capcodes.join(' '))}</td><td>${esc(p.proto === 'FLEX' ? p.type : p.proto + ' ' + p.type)}</td><td${cls ? ` class="page-${cls}"` : ''}>${esc(p.text)}</td>`;
   const q = $('#aPagerFilter').value.trim().toLowerCase(); if (q && !tr.dataset.k.includes(q)) tr.style.display = 'none';
   tb.prepend(tr); while (tb.children.length > PAGES_MAX) tb.lastChild.remove();
   $('#aPagerStat').textContent = `${audio.pages.length} pages, last ${new Date(p.t).toLocaleTimeString()}`;
+  if (p.lat != null) mapSet('APRS:' + p.src, { kind: 'aprs', lat: p.lat, lon: p.lon, label: `${p.src} ${p.comment || ''}`.trim(), t: p.t });
 }
 async function audioEnsureOutput() {
   if (audio.ctx) { if (audio.ctx.state !== 'running') await audio.ctx.resume(); return; }
@@ -1433,7 +1481,8 @@ async function audioStart(fileSrc) {
     await applyAudioGains(audio.gain);
   }
   const pager = pagerDemods(mode);
-  audio.worker.postMessage({ cmd: 'start', rate: audio.rate, center: audio.center, freq: f, mode, squelch: +$('#aSq').value, scan: scanCfg(), pager, nfmBw: pager ? 16e3 : undefined });
+  audio.worker.postMessage({ cmd: 'start', rate: audio.rate, center: audio.center, freq: f, mode, squelch: +$('#aSq').value, scan: scanCfg(), pager, nfmBw: pager ? 16e3 : undefined, ctcss: mode === 'nfm' });
+  for (const v of audio.vfos.values()) vfoSend(v);
   $('#aBankWrap').style.display = scanCfg() ? 'block' : 'none'; audio.bank = null; $('#aLock').textContent = '';
   if (pager) { $('#aPagerWrap').style.display = 'block'; $('#aPagerStat').textContent = 'loading multimon-ng…'; }
   audio.worker.postMessage({ cmd: 'stereo', on: $('#aStereo').checked });
@@ -1498,6 +1547,9 @@ function audioReadout() {
   parts.push(`<span>buffer <b>${(audio.fill || 0).toFixed(2)} s</b>${audio.underruns ? ` (${audio.underruns} underruns)` : ''}</span>`, `<span>DSP <b>${((s.cpu || 0) * 100).toFixed(0)}%</b> of real time</span>`);
   if (audio.source === 'device') parts.push(`<span>gain ${totalGain(g)} dB</span>`);
   if (s.pager) parts.push(`<span>pages <b>${s.pager.count}</b></span>`);
+  if (s.ctcss) parts.push(`<span>CTCSS <b>${s.ctcss.toFixed(1)}</b> Hz</span>`);
+  if (audio.mode === 'usb' || audio.mode === 'lsb' || audio.mode === 'cw') parts.push(`<span>AGC ${(s.ssbGain || 0).toFixed(0)} dB</span>`);
+  if (s.vfos) vfoRender(s.vfos);
   $('#aRead').innerHTML = parts.join('');
   const r = s.rds;
   if (r && (r.pi || r.groups)) {
@@ -1508,6 +1560,7 @@ const LOG_MAX = 200;
 function audioBank(b) {
   audio.bank = b;
   const cur = b.locked;
+  recTxUpdate(cur);
   $('#aLock').innerHTML = cur ? `<span>locked on <b class="ok">${fmtHz(cur)}</b></span>` : `<span class="note">scanning ${b.freqs.length} channels${audioWindows().length > 1 ? ` (window ${audio.win + 1}/${audioWindows().length})` : ''}</span>`;
   for (const e of b.events) {
     const tb = $('#aLog tbody'), tr = document.createElement('tr');
@@ -1624,6 +1677,108 @@ async function audioPlayFile() {
   }
   if (audio.running && audio.source === 'file') { await new Promise(r => setTimeout(r, 1500)); if (audio.running) { audioMsg('end of file', 'ok'); await audioStop(); } }
 }
+// ---- bookmarks (localStorage), WAV recording, data VFOs, map
+function bmLoad() { try { return JSON.parse(localStorage.getItem('rfscan.bm') || '[]'); } catch (e) { return []; } }
+function bmRender() {
+  const sel = $('#aBm'); sel.innerHTML = '<option value="">…</option>';
+  for (const [i, b] of bmLoad().entries()) { const o = document.createElement('option'); o.value = i; o.textContent = b.label; sel.append(o); }
+}
+$('#aBmAdd').onclick = () => {
+  const f = +$('#aFreq').value, mode = $('#aMode').value, data = $('#aData').value;
+  const list = bmLoad(); list.push({ f, mode, data, label: `${f.toFixed(4).replace(/0+$/, '').replace(/\.$/, '.0')} ${mode.toUpperCase()}${data ? ' ' + data.split(',')[0] : ''}` });
+  try { localStorage.setItem('rfscan.bm', JSON.stringify(list)); } catch (e) { audioMsg('bookmarks need localStorage', 'warn'); }
+  bmRender(); $('#aBm').value = list.length - 1;
+};
+$('#aBmDel').onclick = () => { const i = +$('#aBm').value; if ($('#aBm').value === '') return; const list = bmLoad(); list.splice(i, 1); try { localStorage.setItem('rfscan.bm', JSON.stringify(list)); } catch (e) {} bmRender(); };
+$('#aBm').onchange = () => {
+  const b = bmLoad()[+$('#aBm').value]; if (!b) return;
+  $('#aMode').value = b.mode; $('#aData').value = b.data || ''; $('#aPagerWrap').style.display = b.data ? 'block' : 'none';
+  if (audio.running) audioTune(b.f * 1e6, true); else $('#aFreq').value = b.f.toFixed(4);
+};
+bmRender();
+function wavBlob(chunks) {
+  let n = 0; for (const c of chunks) n += c.length;
+  const buf = new ArrayBuffer(44 + 2 * n), v = new DataView(buf), str = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + 2 * n, true); str(8, 'WAVE'); str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 2, true);
+  v.setUint32(24, 48000, true); v.setUint32(28, 48000 * 4, true); v.setUint16(32, 4, true); v.setUint16(34, 16, true); str(36, 'data'); v.setUint32(40, 2 * n, true);
+  let o = 44; for (const c of chunks) for (let k = 0; k < c.length; k++, o += 2) v.setInt16(o, Math.max(-1, Math.min(1, c[k])) * 32767, true);
+  return new Blob([buf], { type: 'audio/wav' });
+}
+function saveBlob(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
+function recName(f) { return `${(f / 1e6).toFixed(4)}MHz_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.wav`; }
+$('#aRec').onclick = () => {
+  if (audio.rec) { const chunks = audio.recChunks; audio.rec = null; audio.recChunks = []; $('#aRec').textContent = '● Record'; if (chunks.length) saveBlob(wavBlob(chunks), recName(audio.freq)); return; }
+  if (!audio.running) { audioMsg('start listening first', 'warn'); return; }
+  audio.rec = { t0: Date.now() }; audio.recChunks = []; $('#aRec').textContent = '■ Stop recording';
+};
+// per-transmission recording: driven by the scanner lock state in audioBank()
+function recTxUpdate(locked) {
+  if (!$('#aRecTx').checked && !audio.recTx) return;
+  if (locked && !audio.recTx && !audio.rec) { audio.recTx = { f: locked, t0: Date.now() }; audio.recChunks = []; }
+  else if (!locked && audio.recTx) {
+    const r = audio.recTx, chunks = audio.recChunks; audio.recTx = null; audio.recChunks = [];
+    const secs = chunks.reduce((n, c) => n + c.length, 0) / 96000; if (secs < 0.5) return;
+    const a = document.createElement('a'); a.href = URL.createObjectURL(wavBlob(chunks)); a.download = recName(r.f); a.className = 'sec';
+    a.textContent = `${new Date(r.t0).toLocaleTimeString()} ${fmtHz(r.f)} ${secs.toFixed(1)} s ⬇`;
+    const box = $('#aRecList'); box.prepend(a); while (box.children.length > 20) { URL.revokeObjectURL(box.lastChild.href); box.lastChild.remove(); }
+  }
+}
+function vfoSend(v) {
+  if (!audio.running) return;
+  if (Math.abs(v.freq - audio.center) > audio.rate * 0.43) { $('#vList').innerHTML = `<span class="warn">${fmtHz(v.freq)} is outside the captured ${fmtHz(audio.center - audio.rate / 2)}–${fmtHz(audio.center + audio.rate / 2)}</span>`; return; }
+  audio.worker.postMessage({ cmd: 'vfo', id: v.id, freq: v.freq, mode: v.mode, pager: v.pager, nfmBw: 16e3, ctcss: v.mode === 'nfm' });
+}
+$('#vAdd').onclick = () => {
+  const f = Math.round(+$('#vFreq').value * 1e6); if (!(f > 0)) return;
+  const v = { id: audio.nextVfo++, freq: f, mode: $('#vMode').value, pager: $('#vData').value };
+  audio.vfos.set(v.id, v); vfoSend(v); vfoRender({}); $('#aPagerWrap').style.display = 'block';
+};
+function vfoDel(id) { audio.vfos.delete(id); if (audio.worker) audio.worker.postMessage({ cmd: 'vfo-del', id }); vfoRender({}); }
+function vfoRender(st) {
+  const box = $('#vList'); box.innerHTML = '';
+  for (const v of audio.vfos.values()) {
+    const s = st[v.id] || {}, el = document.createElement('span'); el.className = 'readout'; el.style.margin = '0 6px 0 0';
+    el.innerHTML = `<b>${fmtHz(v.freq)}</b> ${v.mode.toUpperCase()} ${esc(v.pager.split(',')[0])}${s.level != null ? ` · ${s.level.toFixed(0)} dB` : ''}${s.pager ? ` · ${s.pager.count} msgs` : ''}${s.ctcss ? ` · CTCSS ${s.ctcss}` : ''} <button class="sec" style="padding:0 6px">✕</button>`;
+    el.querySelector('button').onclick = () => vfoDel(v.id); box.append(el);
+  }
+}
+// ---- map (Leaflet, lazily created when the tab is first shown)
+const mapItems = new Map(); let leaf = null, leafLayer = null;
+const MAP_COLORS = { adsb: '#ffb380', ais: '#6fb3ff', aprs: '#7ee787', rs41: '#d2a8ff' };
+function mapSet(id, it) { mapItems.set(id, it); $('#mapCount').textContent = `(${mapItems.size})`; if (leaf) mapRender(); }
+function mapCollect() {
+  for (const e of dec.emitters.values()) {
+    const f = e.d.fields || {}; if (f.lat == null || f.lon == null) continue;
+    const kind = e.d.decoder === 'adsb' ? 'adsb' : e.d.decoder === 'ais' ? 'ais' : e.d.decoder;
+    mapSet(e.d.id, { kind, lat: f.lat, lon: f.lon, label: e.d.label, t: e.last, track: f.positions });
+  }
+}
+function mapShow() {
+  if (typeof L === 'undefined') { $('#mapStat').textContent = 'Leaflet did not load (offline?)'; return; }
+  if (!leaf) {
+    leaf = L.map('mapDiv', { zoomControl: true }).setView([51.22, 4.40], 9);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap contributors' }).addTo(leaf);
+    leafLayer = L.layerGroup().addTo(leaf);
+  }
+  setTimeout(() => leaf.invalidateSize(), 50); mapRender();
+}
+function mapRender() {
+  if (!leaf) return;
+  leafLayer.clearLayers();
+  const on = new Set([...document.querySelectorAll('.mapLayer')].filter(c => c.checked).map(c => c.dataset.kind));
+  const pts = [];
+  for (const [id, it] of mapItems) {
+    if (!on.has(it.kind)) continue;
+    const color = MAP_COLORS[it.kind] || '#fff';
+    L.circleMarker([it.lat, it.lon], { radius: 6, color, fillColor: color, fillOpacity: 0.8, weight: 1 }).bindPopup(`<b>${esc(id)}</b><br>${esc(it.label || '')}<br>${it.t ? new Date(it.t).toLocaleTimeString() : ''}`).addTo(leafLayer);
+    if (it.track && it.track.length > 1) L.polyline(it.track.map(p => [p[1], p[2]]), { color, weight: 2, opacity: 0.6 }).addTo(leafLayer);
+    pts.push([it.lat, it.lon]);
+  }
+  $('#mapStat').textContent = `${pts.length} positions shown`;
+  if (pts.length && !leaf._userMoved) leaf.fitBounds(pts, { padding: [30, 30], maxZoom: 11 });
+}
+document.querySelectorAll('.mapLayer').forEach(c => c.onchange = mapRender);
+$('#mapClear').onclick = () => { mapItems.clear(); $('#mapCount').textContent = ''; mapRender(); };
 $('#aStart').onclick = () => audio.running ? audioStop() : audioStart();
 $('#aScan').onclick = audioScan;
 $('#aFreq').onchange = () => audioTune(+$('#aFreq').value * 1e6);
@@ -1634,7 +1789,7 @@ $('#aVol').oninput = audioGain;
 $('#aMute').onchange = audioGain;
 $('#aSq').oninput = () => { if (audio.worker) audio.worker.postMessage({ cmd: 'squelch', db: +$('#aSq').value }); };
 $('#aStereo').onchange = () => { if (audio.worker) audio.worker.postMessage({ cmd: 'stereo', on: $('#aStereo').checked }); };
-$('#aPager').onchange = () => { $('#aPagerWrap').style.display = $('#aPager').checked ? 'block' : 'none'; if (audio.running) audioStart(audio.source === 'file' ? audio.file : undefined); };
+$('#aData').onchange = () => { $('#aPagerWrap').style.display = $('#aData').value ? 'block' : 'none'; if (audio.running) audioStart(audio.source === 'file' ? audio.file : undefined); };
 $('#aPagerFilter').oninput = () => { const q = $('#aPagerFilter').value.trim().toLowerCase(); for (const tr of $('#aPages tbody').children) tr.style.display = !q || tr.dataset.k.includes(q) ? '' : 'none'; };
 $('#aPagerClear').onclick = () => { audio.pages = []; $('#aPages tbody').innerHTML = ''; $('#aPagerStat').textContent = '0 pages'; };
 $('#aPagerCsv').onclick = () => {
@@ -1654,6 +1809,7 @@ $('#oListen').onclick = () => {
 
 // ---------------------------------------------------------------- tabs / resize
 function showTab(id) {
+  if (id === 'map') setTimeout(mapShow, 0);
   for (const b of document.querySelectorAll('nav button')) b.classList.toggle('on', b.dataset.tab === id);
   for (const s of document.querySelectorAll('section')) s.classList.toggle('on', s.id === id);
   if (id === 'offline') offDraw();

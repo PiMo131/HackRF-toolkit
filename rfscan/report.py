@@ -7,7 +7,7 @@ import time
 
 import numpy as np
 
-from . import bandplan
+from . import bandplan, monitor
 from .db import DB
 
 CAT_COLORS = {"cellular": "#e4572e", "cellular_ul": "#f3a712", "broadcast": "#6a4c93", "ism": "#29a19c",
@@ -117,6 +117,7 @@ def write(run_dir, refresh=None):
                       f"<td class='num'>{r[5]:.1f}</td><td class='num'>{r[7]:.2f}</td>"
                       f"<td>{'cont' if r[8] else 'intermittent'}</td><td>{html.escape(r[9] or '')}</td></tr>")
     n_crc = sum(1 for e in emit if e[5])
+    mon = monitor.html_section(run_dir, len(surveys)) if surveys else ""
     doc = f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>RF Environment Scan</title>{f'<meta http-equiv="refresh" content="{refresh}">' if refresh else ""}<style>
 :root{{--bg:#fafaf8;--fg:#1d1d1f;--mut:#6b6b70;--line:#e3e3e0;--card:#fff;--acc:#2a6fdb}}
@@ -134,6 +135,8 @@ svg.spec{{width:100%;height:auto;background:var(--card);border:1px solid var(--l
 svg .mean{{fill:none;stroke:var(--acc);stroke-width:1}} svg .mx{{fill:none;stroke:#e4572e;stroke-width:.6;opacity:.6}}
 svg .fl{{fill:none;stroke:var(--mut);stroke-width:.8;stroke-dasharray:3 3}} svg .ax{{fill:var(--mut);font-size:11px}} svg .grid{{stroke:var(--line)}}
 a{{color:var(--acc)}} .legend span{{margin-right:14px}}
+h3{{font-size:15px;margin:20px 0 6px}} svg.heat{{width:100%;height:auto;background:var(--card);border:1px solid var(--line);border-radius:8px}}
+svg.spark rect{{fill:var(--acc)}}
 </style></head><body><main>
 <h1>RF Environment Scan</h1>
 <div class="meta">{html.escape(os.path.abspath(run_dir))} &middot; {_ts(caps[1])} → {_ts(caps[2])}{' &middot; <b>live</b>, updated ' + time.strftime('%H:%M:%S') if refresh else ''}</div>
@@ -144,6 +147,7 @@ a{{color:var(--acc)}} .legend span{{margin-right:14px}}
 <h2>Spectrum (latest survey)</h2>
 <div class="legend meta"><span style="color:var(--acc)">— mean</span><span style="color:#e4572e">— max-hold</span><span>- - noise floor</span><span>shaded = detected energy regions (hover)</span></div>
 {spec or '<p class="meta">no survey</p>'}
+{mon}
 <h2>Odd ones out</h2><p class="meta">Undecoded signals outside cellular, Wi-Fi/BLE and broadcast bands, strongest first. These have IQ saved for closer analysis.</p>
 <div class="wrap"><table><tr><th>MHz</th><th>BW kHz</th><th>SNR</th><th>classification</th><th>band plan</th><th>seen</th><th>bursts</th><th>first</th><th>last</th><th></th></tr>
 {''.join(rows_o) or '<tr><td colspan=10 class=meta>none yet</td></tr>'}</table></div>

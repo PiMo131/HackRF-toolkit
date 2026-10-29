@@ -12,7 +12,9 @@
 #include "multimon.h"
 
 /* pager demodulators only (ALL_DEMOD includes the X11 scope, which is not built here) */
-static const struct demod_param *mm_dem[] = { &demod_flex, &demod_flex_next, &demod_poc5, &demod_poc12, &demod_poc24 };
+extern int aprs_mode;   /* hdlc.c: print AX.25 UI frames as "APRS: SRC>DST,PATH:payload" on one line */
+static const struct demod_param *mm_dem[] = { &demod_flex, &demod_flex_next, &demod_poc5, &demod_poc12, &demod_poc24,
+    &demod_afsk1200, &demod_dtmf, &demod_zvei1, &demod_zvei2, &demod_zvei3, &demod_ccir, &demod_eea, &demod_eia, &demod_morse };
 #define MM_N (sizeof(mm_dem) / sizeof(mm_dem[0]))
 static struct demod_state mm_st[MM_N];
 static int mm_on[MM_N];
@@ -24,7 +26,7 @@ static unsigned mm_cnt, mm_cap;
 /* names: comma separated, e.g. "FLEX" or "FLEX,POCSAG1200". Returns the number of demodulators opened. */
 EMSCRIPTEN_KEEPALIVE int mm_stream_open(const char *names) {
     int n = 0;
-    mm_overlap = 0;
+    mm_overlap = 0; aprs_mode = 1;
     for (unsigned i = 0; i < MM_N; i++) {
         mm_on[i] = 0;
         const char *p = names, *name = mm_dem[i]->name; size_t L = strlen(name);

@@ -4,6 +4,7 @@
   rfscan survey   [--range 1:6000] [--seconds 30]          one wideband survey, print regions
   rfscan analyze  PATH [PATH...] [--out DIR]               offline: classify + decode stored IQ
   rfscan report   RUN_DIR                                  (re)build report.html
+  rfscan monitor  RUN_DIR [--baseline RUN_DIR]             heatmap, band occupancy, new-signal list
   rfscan capture  FREQ_MHZ RATE_MSPS SECONDS OUT           single capture with auto-gain
   rfscan decoders                                          list decoders and their status
 """
@@ -26,7 +27,7 @@ def cmd_scan(a):
     Scanner(out, lo, hi, survey_s=a.survey_seconds, resurvey_s=a.resurvey, duration=a.duration,
             watch=not a.no_watch, watch_names=a.watch.split(",") if a.watch else None,
             storage_gb=a.storage_gb, workers=a.workers, bin_w=a.bin_khz * 1e3,
-            keep_wide=not a.no_keep_wide and a.focus != "odd", focus=a.focus).run()
+            keep_wide=not a.no_keep_wide and a.focus != "odd", focus=a.focus, baseline=a.baseline).run()
 
 
 def cmd_survey(a):
@@ -106,6 +107,29 @@ def cmd_report(a):
     print(report.write(a.run_dir))
 
 
+def cmd_monitor(a):
+    """Offline monitoring of a stored run: new-signal list, heatmap PNG, JSON summary."""
+    from . import monitor
+    summ, _ = monitor.analyze(a.run_dir, a.baseline, f_tol=a.f_tol_khz * 1e3, db_tol=a.db_tol, min_snr=a.min_snr)
+    out = os.path.join(a.run_dir, monitor.OUT_DIR)
+    news = [n for n in summ["new_signals"] if n["persisted"] >= min(a.min_persist, n["later_surveys"])]
+    once = sum(1 for n in news if n["later_surveys"] and not n["persisted"])
+    base = f"baseline run {a.baseline} ({summ['n_baseline_surveys']} surveys) + earlier surveys" if a.baseline \
+        else "baseline = earlier surveys of this run"
+    print(f"{summ['n_surveys']} surveys, {base}; tolerance {a.f_tol_khz:g} kHz / {a.db_tol:g} dB, min SNR {a.min_snr:g} dB")
+    print(f"{len(news)} new signals ({once} seen in one survey only, listed last):")
+    for n in news:
+        pers = f"{n['persisted']}/{n['later_surveys']}" if n["later_surveys"] else "  -"
+        bdb = "   -" if n["baseline_db"] is None else f"{n['baseline_db']:4.1f}"
+        print(f"{n['freq_mhz']:10.3f} MHz  bw {n['bw_khz']:6.0f} kHz  snr {n['snr']:5.1f} dB  base {bdb} dB"
+              f"  occ {n['occupancy']:4.2f}  {'cont ' if n['continuous'] else 'inter'}  first {n['t_str'][11:16]}  "
+              f"persisted {pers:>5s}  {n['band'][:45]}")
+    if a.log_events:
+        monitor.log_events(a.run_dir, news)
+        print(f"{len(news)} new_signal events appended to {os.path.join(a.run_dir, 'events.jsonl')}")
+    print(f"heatmap: {os.path.join(out, 'heatmap.png')}\nsummary: {os.path.join(out, 'summary.json')}")
+
+
 def cmd_dashboard(a):
     """Serve a live, auto-refreshing report for a (running) scan on localhost."""
     import functools
@@ -175,6 +199,7 @@ def main(argv=None):
                    help="odd: skip cellular/Wi-Fi/BLE/broadcast/ADS-B, spend time on unexplained signals")
     s.add_argument("--workers", type=int)
     s.add_argument("--out")
+    s.add_argument("--baseline", help="run dir whose surveys count as 'seen before' for new-signal alerts")
     s.set_defaults(fn=cmd_scan)
     s = sub.add_parser("survey", help="single wideband survey")
     s.add_argument("--range", default="1:6000")
@@ -196,6 +221,16 @@ def main(argv=None):
     s = sub.add_parser("report")
     s.add_argument("run_dir")
     s.set_defaults(fn=cmd_report)
+    s = sub.add_parser("monitor", help="heatmap + band occupancy + new signals of a stored run")
+    s.add_argument("run_dir")
+    s.add_argument("--baseline", help="run dir whose surveys count as 'seen before' (default: earlier surveys only)")
+    s.add_argument("--f-tol-khz", type=float, default=150, help="frequency tolerance (default 150 kHz)")
+    s.add_argument("--db-tol", type=float, default=6, help="must exceed the baseline by this much (default 6 dB)")
+    s.add_argument("--min-snr", type=float, default=10, help="ignore weaker regions (default 10 dB)")
+    s.add_argument("--min-persist", type=int, default=0,
+                   help="only list signals seen again in at least N later surveys (default 0: all)")
+    s.add_argument("--log-events", action="store_true", help="also append new_signal events to events.jsonl")
+    s.set_defaults(fn=cmd_monitor)
     s = sub.add_parser("dashboard", help="live auto-refreshing report in the browser")
     s.add_argument("run_dir", nargs="?", help="default: newest run")
     s.add_argument("--port", type=int, default=8080)

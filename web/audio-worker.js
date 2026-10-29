@@ -212,6 +212,7 @@ class NfmDemod {
     [I, Q] = this.chan.process(I, Q);
     const d = this.disc.process(I, Q);
     if (this.pager) this.pagerOut = this.pager.process(d);     // raw discriminator, before de-emphasis
+    if (this.ctcss) this.ctcss.process(d);
     for (let k = 0; k < d.length; k++) { d[k] *= this.devScale; const y = this.deem.y + (d[k] - this.deem.y) * (1 - this.deem.a); this.deem.y = y; d[k] = y; }
     const a = this.rs.process(this.lpf.process(d));
     for (let k = 0; k < a.length; k++) a[k] = softLimit(a[k] * 0.7);
@@ -223,9 +224,10 @@ class NfmDemod {
 // the same audio native rfscan pipes into multimon-ng. Decoded by PagerDecoder (multimon-ng WASM).
 const PAGER_RATE = 22050;
 class PagerTap {
-  constructor(fs) {
+  // fs: input rate. audioScale: when the input is demodulated audio (±1) instead of a discriminator (rad/sample)
+  constructor(fs, audioScale) {
     this.lpf = new Fir(lowpassTaps(64, 6000, fs)); this.rs = new Resampler(fs, PAGER_RATE);
-    this.scale = 12000 * fs / (2 * Math.PI * 4800); this.dc = 0;
+    this.scale = audioScale ? audioScale * 32767 : 12000 * fs / (2 * Math.PI * 4800); this.dc = 0;
   }
   process(d) {
     const y = this.rs.process(this.lpf.process(d)), out = new Int16Array(y.length);
@@ -237,6 +239,30 @@ class PagerTap {
     }
     this.dc = dc; return out;
   }
+}
+// APRS payload helpers: data type from the first character, position from the uncompressed or compressed formats
+function aprsType(p) {
+  const c = p[0];
+  if (c === '!' || c === '=' || c === '/' || c === '@') return 'POS';
+  if (c === ':') return 'MSG'; if (c === '>') return 'STATUS'; if (c === ';') return 'OBJECT'; if (c === 'T') return 'TELEM';
+  if (c === '`' || c === "'" || c === '\x1c' || c === '\x1d') return 'MIC-E'; if (c === '}') return '3RD';
+  return 'OTHER';
+}
+function aprsPosition(p) {
+  let s = p.slice(1);
+  if ((p[0] === '/' || p[0] === '@') && /^\d{6}[zh\/]/.test(s)) s = s.slice(7);        // timestamped
+  let m = /^(\d{2})(\d{2}\.\d+)([NS])(.)(\d{3})(\d{2}\.\d+)([EW])(.)(.*)$/.exec(s);
+  if (m) {
+    const lat = (+m[1] + +m[2] / 60) * (m[3] === 'S' ? -1 : 1), lon = (+m[5] + +m[6] / 60) * (m[7] === 'W' ? -1 : 1);
+    return { lat: +lat.toFixed(5), lon: +lon.toFixed(5), symbol: m[4] + m[8], comment: m[9].trim() };
+  }
+  m = /^([\/\\A-Za-j])([!-{]{4})([!-{]{4})(.)(..)(.)(.*)$/.exec(s);              // compressed (base-91)
+  if (m) {
+    const b91 = t => [...t].reduce((a, ch) => a * 91 + (ch.charCodeAt(0) - 33), 0);
+    const lat = 90 - b91(m[2]) / 380926, lon = -180 + b91(m[3]) / 190463;
+    return { lat: +lat.toFixed(5), lon: +lon.toFixed(5), symbol: m[1] + m[4], comment: m[7].trim() };
+  }
+  return {};
 }
 // Streams 22050 Hz s16 audio into multimon-ng's FLEX/POCSAG demodulators (web/tools/multimon-ng.wasm,
 // entry points in web/tools/src/mm_stream.c). Output lines arrive through Module.print.
@@ -259,8 +285,17 @@ class PagerDecoder {
   }
   close() { try { this.M._mm_stream_close(); } catch (e) { /* module state is discarded anyway */ } }
   line(l) {
-    let msg = null;
-    if (l.startsWith('FLEX')) {
+    let msg = null, m;
+    if (l.startsWith('APRS: ')) {                                // APRS: SRC>DEST,PATH:payload (AX.25 UI via AFSK1200)
+      m = /^APRS: ([^>]+)>([^,:]+)((?:,[^,:]+)*):(.*)$/.exec(l);
+      if (m) msg = { proto: 'APRS', mode: '', frame: '', capcodes: [m[1]], type: aprsType(m[4]), text: m[4], src: m[1], dest: m[2], path: m[3].replace(/^,/, ''), ...aprsPosition(m[4]) };
+    } else if ((m = /^DTMF: (.)$/.exec(l))) {
+      msg = { proto: 'DTMF', mode: '', frame: '', capcodes: [], type: 'KEY', text: m[1] };
+    } else if ((m = /^(ZVEI1|ZVEI2|ZVEI3|CCIR|EEA|EIA): ([0-9A-F]+)$/.exec(l))) {
+      msg = { proto: m[1], mode: '', frame: '', capcodes: [m[2]], type: 'SEL', text: m[2] };
+    } else if ((m = /^Morse: (.*)$/.exec(l))) {
+      msg = { proto: 'CW', mode: '', frame: '', capcodes: [], type: 'CW', text: m[1].trim() };
+    } else if (l.startsWith('FLEX')) {
       const p = l.split('|');
       if (p.length >= 7) msg = { proto: 'FLEX', mode: p[2], frame: p[3], capcodes: p[4].trim().split(/\s+/), type: p[5], text: p.slice(6).join('|').trim() };
       else { const m = /^FLEX: \S+ \S+ (\S+) (\S+) \[(\d+)\] (\w+)\s?(.*)$/.exec(l); if (m) msg = { proto: 'FLEX', mode: m[1], frame: m[2], capcodes: [m[3]], type: m[4], text: m[5].trim() }; }
@@ -271,6 +306,71 @@ class PagerDecoder {
     if (!msg) return;
     msg.t = Date.now(); msg.raw = l; this.count++; this.lastT = msg.t;
     this.onMessage(msg);
+  }
+}
+// SSB / CW: shift the wanted sideband to baseband, lowpass, take the real part, audio AGC.
+// usb: 300-3000 Hz above the carrier; lsb: below; cw: 500 Hz wide around the carrier, 700 Hz pitch.
+class SsbDemod {
+  constructor(fs, mode = 'usb') {
+    this.fs = fs; this.mode = mode;
+    const bw = mode === 'cw' ? 500 : 2700, mid = mode === 'cw' ? 0 : 1650;
+    this.sign = mode === 'lsb' ? -1 : 1;
+    this.shift = mode === 'cw' ? 700 : mid;                     // audio position of the band centre
+    this.mid = mid;
+    this.chan = new FirDecimC(lowpassTaps(96, bw / 2, fs), 1);
+    this.rs = new Resampler(fs, AUDIO_RATE); this.rsQ = new Resampler(fs, AUDIO_RATE);
+    this.ph1 = 0; this.ph2 = 0; this.w1 = -2 * Math.PI * this.sign * mid / fs; this.w2 = 2 * Math.PI * this.shift / AUDIO_RATE;
+    this.gain = 1; this.peak = 0;
+  }
+  process(I, Q) {
+    // 1) rotate so the band centre sits at DC, 2) complex lowpass, 3) rotate back to the audio pitch and take Re
+    const n = I.length, i2 = new Float32Array(n), q2 = new Float32Array(n);
+    for (let k = 0; k < n; k++) {
+      const c = Math.cos(this.ph1), s = Math.sin(this.ph1);
+      i2[k] = I[k] * c - Q[k] * s; q2[k] = I[k] * s + Q[k] * c;
+      this.ph1 += this.w1; if (this.ph1 > Math.PI) this.ph1 -= 2 * Math.PI; else if (this.ph1 < -Math.PI) this.ph1 += 2 * Math.PI;
+    }
+    const [fi, fq] = this.chan.process(i2, q2);
+    const ai = this.rs.process(fi), aq = this.rsQ.process(fq), a = new Float32Array(Math.min(ai.length, aq.length));
+    for (let k = 0; k < ai.length; k++) {
+      const c = Math.cos(this.ph2), s = Math.sin(this.ph2);
+      let v = (ai[k] * c - aq[k] * s * this.sign) * this.gain * 4;
+      this.ph2 += this.w2; if (this.ph2 > Math.PI) this.ph2 -= 2 * Math.PI;
+      const pk = Math.abs(v); if (pk > 0.8) this.gain *= 0.95; else if (this.gain < 300) this.gain *= 1.0003;   // fast attack, slow decay
+      a[k] = softLimit(v);
+    }
+    return { L: a, R: a, stereo: false };
+  }
+  status() { return { ssbGain: 20 * Math.log10(this.gain) }; }
+}
+// CTCSS sub-audible tone detector: Goertzel bank on the raw NFM discriminator, 0.4 s blocks at 4 kHz
+const CTCSS_TONES = [67.0, 69.3, 71.9, 74.4, 77.0, 79.7, 82.5, 85.4, 88.5, 91.5, 94.8, 97.4, 100.0, 103.5, 107.2, 110.9, 114.8, 118.8, 123.0, 127.3,
+  131.8, 136.5, 141.3, 146.2, 151.4, 156.7, 159.8, 162.2, 165.5, 167.9, 171.3, 173.8, 177.3, 179.9, 183.5, 186.2, 189.9, 192.8, 196.6, 199.5, 203.5, 206.5, 210.7, 218.1, 225.7, 229.1, 233.6, 241.8, 250.3, 254.1];
+class Ctcss {
+  constructor(fs) {
+    this.lpf = new Fir(lowpassTaps(64, 300, fs)); this.rs = new Resampler(fs, 4000);
+    this.block = new Float32Array(1600); this.n = 0; this.tone = null; this.dc = 0;
+    this.coef = CTCSS_TONES.map(f => 2 * Math.cos(2 * Math.PI * f / 4000));
+  }
+  process(d) {
+    const y = this.rs.process(this.lpf.process(d));
+    for (let k = 0; k < y.length; k++) {
+      this.dc += (y[k] - this.dc) * 0.002;
+      this.block[this.n++] = y[k] - this.dc;
+      if (this.n === this.block.length) { this.analyse(); this.n = 0; }
+    }
+  }
+  analyse() {
+    const b = this.block; let tot = 0; for (let k = 0; k < b.length; k++) tot += b[k] * b[k];
+    let best = -1, bestP = 0, sum = 0;
+    for (let t = 0; t < this.coef.length; t++) {
+      const c = this.coef[t]; let s0 = 0, s1 = 0, s2 = 0;
+      for (let k = 0; k < b.length; k++) { s0 = b[k] + c * s1 - s2; s2 = s1; s1 = s0; }
+      const p = s1 * s1 + s2 * s2 - c * s1 * s2; sum += p;
+      if (p > bestP) { bestP = p; best = t; }
+    }
+    const mean = (sum - bestP) / (this.coef.length - 1);
+    this.tone = (bestP > 8 * mean && bestP > 1e-7 * b.length * b.length) ? CTCSS_TONES[best] : null;
   }
 }
 // AM (airband): envelope, with slow AGC
@@ -523,8 +623,13 @@ class Receiver {
     const bw = this.mode === 'wfm' ? 180e3 : this.mode === 'nfm' ? 40e3 : 30e3;
     this.fe = new FrontEnd(this.rate, this.freq - this.center, bw);
     const fs = this.fe.chanRate;
-    this.demod = this.mode === 'wfm' ? new WfmDemod(fs) : this.mode === 'nfm' ? new NfmDemod(fs, cfg.nfmBw || 12.5e3) : new AmDemod(fs);
+    this.demod = this.mode === 'wfm' ? new WfmDemod(fs) : this.mode === 'nfm' ? new NfmDemod(fs, cfg.nfmBw || 12.5e3)
+      : this.mode === 'am' ? new AmDemod(fs) : new SsbDemod(fs, this.mode);
+    // data tap for multimon-ng: NFM feeds the raw discriminator (FSK data), AM/SSB/CW feed the demodulated audio (tones)
     if (cfg.pager && this.mode === 'nfm') this.demod.pager = new PagerTap(fs);
+    else if (cfg.pager && this.mode !== 'wfm') this.audioTap = new PagerTap(AUDIO_RATE, 0.5);
+    if (cfg.ctcss && this.mode === 'nfm') this.demod.ctcss = new Ctcss(fs);
+    this.id = cfg.id || 0; this.dataOnly = !!cfg.dataOnly;
     this.pagerDec = null;                                        // PagerDecoder, attached by the worker glue once the WASM is loaded
     this.squelchDb = cfg.squelch ?? -200; this.level = -100; this.open = true;
     this.busyMs = 0; this.inSamples = 0;
@@ -549,6 +654,7 @@ class Receiver {
     const r = this.demod.process(I, Q);
     if (!this.open) { r.L.fill(0); r.R.fill(0); }
     if (this.pagerDec && this.demod.pagerOut) this.pagerDec.feed(this.demod.pagerOut);   // never squelched: the decoder has its own sync
+    else if (this.pagerDec && this.audioTap) this.pagerDec.feed(this.audioTap.process(r.L));
     this.busyMs += performance.now() - t;
     return r;
   }
@@ -557,6 +663,7 @@ class Receiver {
     this.busyMs = 0; this.inSamples = 0;
     const s = { level: this.level, open: this.open, cpu, chanRate: this.fe.chanRate, freq: this.freq, bank: this.bank ? this.bank.status() : null, ...this.demod.status() };
     if (this.pagerDec) s.pager = { count: this.pagerDec.count, lastT: this.pagerDec.lastT };
+    if (this.demod.ctcss) s.ctcss = this.demod.ctcss.tone;
     return s;
   }
 }
@@ -580,26 +687,35 @@ if (typeof importScripts === 'function') {
         mmLoading = mmLoading || (async () => { importScripts('tools/multimon-ng.js'); return (await fetch('tools/multimon-ng.wasm')).arrayBuffer(); })();
         mmWasm = await mmLoading;
       }
-      if (rx !== r || !r.demod.pager) return;                   // stopped or retuned while loading
-      r.pagerDec = new PagerDecoder(self.create_multimon, mmWasm, demods, msg => postMessage({ pager: msg }));
-      postMessage({ pagerReady: demods, demods: r.pagerDec.n });
-    } catch (err) { postMessage({ pagerError: String(err) }); }
+      if ((rx !== r && !extra.has(r.id)) || !(r.demod.pager || r.audioTap)) return;   // stopped or retuned while loading
+      r.pagerDec = new PagerDecoder(self.create_multimon, mmWasm, demods, msg => postMessage({ pager: { ...msg, vfo: r.id, freq: r.freq } }));
+      postMessage({ pagerReady: demods, demods: r.pagerDec.n, vfo: r.id });
+    } catch (err) { postMessage({ pagerError: String(err), vfo: r.id }); }
   }
+  // extra data-only VFOs (pager/APRS/... decoders on other channels of the same capture)
+  const extra = new Map();
+  function closeRx(r) { if (r && r.pagerDec) { r.pagerDec.close(); r.pagerDec = null; } }
   onmessage = e => {
     const m = e.data;
     if (m.cmd === 'start') {
-      if (rx && rx.pagerDec) rx.pagerDec.close();
+      closeRx(rx); for (const r of extra.values()) closeRx(r); extra.clear();
       rx = new Receiver(m); specAcc = null; specCount = 0; postMessage({ started: true, chanRate: rx.fe.chanRate });
-      if (m.pager && rx.demod.pager) pagerAttach(rx, m.pager);
+      if (m.pager && (rx.demod.pager || rx.audioTap)) pagerAttach(rx, m.pager);
       return;
     }
-    if (m.cmd === 'stop') { if (rx && rx.pagerDec) rx.pagerDec.close(); rx = null; return; }
+    if (m.cmd === 'stop') { closeRx(rx); rx = null; for (const r of extra.values()) closeRx(r); extra.clear(); return; }
     if (!rx) return;
+    if (m.cmd === 'vfo') {                                       // {id, freq, mode, pager, nfmBw}
+      closeRx(extra.get(m.id));
+      const r = new Receiver({ ...m, rate: rx.rate, center: rx.center, dataOnly: true, squelch: -200 });
+      extra.set(m.id, r); if (m.pager) pagerAttach(r, m.pager); return;
+    }
+    if (m.cmd === 'vfo-del') { closeRx(extra.get(m.id)); extra.delete(m.id); return; }
     if (m.cmd === 'tune') { rx.tune(m.freq); return; }
     if (m.cmd === 'squelch') { rx.squelchDb = m.db; return; }
     if (m.cmd === 'fill') {        // buffer above target -> make fewer samples (positive trim), below -> more
       const ppm = Math.max(-3000, Math.min(3000, (m.fill - 0.3) * 4000));
-      for (const r of [rx.demod.rsL, rx.demod.rsR, rx.demod.rs]) if (r) r.trim(ppm);
+      for (const r of [rx.demod.rsL, rx.demod.rsR, rx.demod.rs, rx.demod.rsQ]) if (r) r.trim(ppm);
       return;
     }
     if (m.cmd === 'bank' && rx.bank) { if (m.thresholdDb !== undefined) rx.bank.thresholdDb = m.thresholdDb; if (m.holdMs !== undefined) rx.bank.holdMs = m.holdMs; if (m.priority !== undefined) rx.bank.priority = m.priority; if (m.lockouts) rx.bank.lockouts = new Set(m.lockouts); return; }
@@ -608,6 +724,7 @@ if (typeof importScripts === 'function') {
       const iq8 = new Int8Array(m.buf);
       if (specCount < 8) spectrum(iq8);
       const r = rx.process(iq8);
+      for (const x of extra.values()) x.process(iq8);
       if (r && r.L.length) {
         const n = r.L.length, out = new Float32Array(2 * n);
         for (let k = 0; k < n; k++) { out[2 * k] = r.L[k]; out[2 * k + 1] = r.R[k]; }
@@ -617,6 +734,7 @@ if (typeof importScripts === 'function') {
       if (now - lastStatus > 250) {
         lastStatus = now;
         const msg = { status: rx.status() };
+        if (extra.size) { msg.status.vfos = {}; for (const [id, x] of extra) { const s = x.status(); msg.status.vfos[id] = { freq: x.freq, level: s.level, ctcss: s.ctcss, pager: s.pager }; } }
         if (specAcc && specCount >= 8) { msg.spectrum = specAcc; specAcc = null; specCount = 0; }
         postMessage(msg);
       }
