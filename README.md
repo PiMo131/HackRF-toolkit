@@ -56,6 +56,9 @@ FM repeater, SO-50, AO-91, RS-44, Meteor-M2 LRPT and ORBCOMM, and **Track** tune
 downlink with the Doppler shift corrected every second. The DSP (`web/audio-worker.js`) is plain JavaScript in a
 worker and uses about a quarter of one core per VFO at 10 Msps; audio goes out through an AudioWorklet.
 
+Research notes: `docs/research-live-audio.md` (audio modes, DAB+, legal), `docs/research-features-2026-10-29.md`
+(comparison with other browser SDRs, satellites), findings in `docs/findings.md`.
+
 Source is in `web/`. `web/build.sh` refreshes the Python copy in `web/py` after changes to
 `rfscan/`; `web/build_tools.sh` rebuilds the two WebAssembly tools. GitHub Pages deploys `web/`
 on every push to `main` (`.github/workflows/pages.yml`).

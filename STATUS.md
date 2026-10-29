@@ -23,7 +23,10 @@ Live dashboard: `./rfscan.sh dashboard [run]`. Scan focus mode: `./rfscan.sh sca
 0. Capture timeout (fixed 2026-10-28): the 10-19 `ism433` timeout was a USB drop-out (HackRF vanished right after, low battery).
    `hackrf.capture` now fails within ~2 s when the stream stalls (clear message), and the scheduler reopens the device
    and retries that dwell once. Note: `rfscan capture` takes MHz/Msps (`capture 434.4 4 20 out`), not Hz.
-0. Possible "track" mode: log 2290.45 / 2304–2314 MHz power over time for direction finding.
+0. "Track" mode is now `rfscan monitor` (heatmap, occupancy, new-signal alerts, 2026-10-29); the 2.27–2.29 GHz
+   bursts are still unidentified: next is a 20 MHz capture at 2285 MHz and a look at the burst timing.
+0. Browser ideas not built (see docs/research-features-2026-10-29.md): ORBCOMM decoder, Meteor-M2 LRPT (needs a
+   137 MHz antenna), DAB+, DMR (patent risk), ACARS/VDL2 (opt-in only, BIPT), HackRF Pro 16-bit mode (no API).
 1. ADS-B decoder is ~2.4× slower than real time at 4 Msps. It's fine in the pool, but could be optimised.
 2. b1_2140: 2139–2146 MHz looks like 30 kHz-SCS OFDM (NR?), but the NR decoder finds no SSB. Investigate.
 3. 868 MHz: FSK bursts at 868.45 MHz (likely **Z-Wave**) and short bursts at 866.7/869.7 MHz are
@@ -121,7 +124,8 @@ Serve: `python3 -m http.server 8090 --bind 127.0.0.1 --directory web`, open http
   OOK sensor (tests/web/ism868_synth, ism433_synth, 2 Msps, 8 s). Results: wM-Bus 3/3 (id 36325352, CRC, incl. one frame
   across the 4 s chunk border that is lost with mergeWindow 0; the 12 dB one at snr 17 dB), Nexus-TH 3/3, identical to native
   rtl_433 on the same channelized data; 0 false decodes on the 60 s real captures (3-7x real time including channelizing).
-  Next: a worker preset (10 Msps live -> IqChannelizer -> Rtl433Live) and a Decodes-tab table keyed by model:id.
+  Done the same evening: 'RTL433' decoder option in the Audio tab (main receiver or data VFO, `IsmVfo` in audio-worker.js),
+  presets ISM 433 / SRD 868; live at 868.95 MHz 61 ms per 2 s chunk, no telegram during the 5 min tried.
 * Scan waterfall is 2048 columns over the full range, so it is coarse when zoomed.
 * Native `rfscan capture` hit "capture timeout" at 1089 MHz/20 Msps today while hackrf_transfer worked (see item 0).
 
