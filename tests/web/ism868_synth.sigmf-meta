@@ -1,0 +1,18 @@
+{
+ "global": {
+  "core:datatype": "ci8",
+  "core:sample_rate": 2000000.0,
+  "core:version": "1.0.0",
+  "core:hw": "HackRF One",
+  "core:recorder": "rfscan",
+  "core:description": "synthetic wM-Bus mode C (ELS 36325352) on 868.95 MHz"
+ },
+ "captures": [
+  {
+   "core:sample_start": 0,
+   "core:frequency": 868600000.0,
+   "core:datetime": "2026-10-29T21:32:10.102574Z"
+  }
+ ],
+ "annotations": []
+}

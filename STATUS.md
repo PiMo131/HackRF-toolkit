@@ -94,6 +94,25 @@ Serve: `python3 -m http.server 8090 --bind 127.0.0.1 --directory web`, open http
   request 53, effect on the stream unknown, left out), RS41 radiosonde decoder (needs the rs1729/RS source + a sample
   recording from the internet; not fetched yet).
   Python changes for Pyodide: `_ofdm_util.pmap` (no threads on emscripten), `recording.iq` reads via fromfile (no mmap).
+* Live rtl_433 (2026-10-29): `web/rtl433-live.js` (plain script, importScripts/require; not wired into index.html yet).
+  `new Rtl433Live(create_rtl433, wasmBytes, {rate, centerHz, onMessage, chunkS: 2, mergeWindow: 0.25, dedupeS: 1, format: 'cs16',
+  extraArgs: [], extraProtocols: [104, 105, 238]})`; `feed(I, Q)` (Float32 baseband at `rate`, |x| <= 1), `flush()`, `stats`
+  {chunks, decodes, dupes, msPerChunk}. Every 2 s chunk (+ the last 0.25 s of the previous one) is written as cs16 into a fresh
+  rtl_433 module and decoded with `-r -s -f -F json -M level -M protocol -M time:rel -R <all defaults + wM-Bus C/T, S, T>`;
+  onMessage gets the rtl_433 JSON fields plus {t (ms epoch, estimated), ts (stream s), freqHz, chunk}. A fresh module per chunk
+  is required (EXIT_RUNTIME=1: after exit() the FS streams are closed, a second callMain prints nothing) and costs only ~2 ms
+  (V8 caches the compiled module). `IqChannelizer(inRate, offsetHz, outRate)` in the same file does NCO + FIR decimation from
+  int8 IQ. Cost per 2 s chunk (Node 20, this laptop): 1 Msps 72 ms (46 ms rtl_433 + 10 ms pack + 2 ms module + 2 ms FS), 250 k
+  37 ms; cu8 is slower to pack (45 ms) and cf32 slower to decode (62 ms). Channelizer: 10 Msps -> 250 k/1 M 27 % of a core,
+  20 Msps -> 1 M 47 %. Rates: 250 k for 433 MHz OOK/FSK (433.92), 1 M for 868 MHz wM-Bus (868.95 C/T, 868.3 S/T).
+  Verified: `tests/web/test_rtl433_live.js <ci8> <centreMHz> <rateMsps> [--tune MHz:kHz] [--expect model:id]`. The 10-19
+  reference captures testdata/ism433 + ism868 hold no rtl_433-decodable packet (native rtl_433 and rfscan's rtl433.py find none
+  either; the ELS 36325352 gas meter was decoded live on 10-29 from a watch capture whose wide IQ was not kept), so
+  `tests/web/make_ism_synth.py` rebuilds that meter's wM-Bus mode C telegram bit-exact from the logged payload plus a Nexus-TH
+  OOK sensor (tests/web/ism868_synth, ism433_synth, 2 Msps, 8 s). Results: wM-Bus 3/3 (id 36325352, CRC, incl. one frame
+  across the 4 s chunk border that is lost with mergeWindow 0; the 12 dB one at snr 17 dB), Nexus-TH 3/3, identical to native
+  rtl_433 on the same channelized data; 0 false decodes on the 60 s real captures (3-7x real time including channelizing).
+  Next: a worker preset (10 Msps live -> IqChannelizer -> Rtl433Live) and a Decodes-tab table keyed by model:id.
 * Scan waterfall is 2048 columns over the full range, so it is coarse when zoomed.
 * Native `rfscan capture` hit "capture timeout" at 1089 MHz/20 Msps today while hackrf_transfer worked (see item 0).
 

@@ -1,0 +1,18 @@
+{
+ "global": {
+  "core:datatype": "ci8",
+  "core:sample_rate": 2000000.0,
+  "core:version": "1.0.0",
+  "core:hw": "HackRF One",
+  "core:recorder": "rfscan",
+  "core:description": "synthetic Nexus OOK on 433.92 MHz"
+ },
+ "captures": [
+  {
+   "core:sample_start": 0,
+   "core:frequency": 434400000.0,
+   "core:datetime": "2026-10-29T21:32:09.796769Z"
+  }
+ ],
+ "annotations": []
+}

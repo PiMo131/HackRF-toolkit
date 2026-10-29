@@ -161,7 +161,7 @@ td button{padding:1px 8px;font-size:12px}
     <label>Squelch dB<input id="aSq" type="range" min="-80" max="0" value="-80" style="width:120px"></label>
     <label class="chk"><input id="aStereo" type="checkbox" checked>Stereo</label>
     <label class="chk"><input id="aMute" type="checkbox">Mute</label>
-    <label>Data decoder<select id="aData"><option value="">none</option><option value="FLEX">P2000 FLEX</option><option value="FLEX,POCSAG512,POCSAG1200,POCSAG2400">Pagers FLEX + POCSAG</option><option value="AFSK1200">APRS / AX.25 (AFSK1200)</option><option value="DTMF,ZVEI1,ZVEI2,CCIR,EEA,EIA">DTMF + selcall</option><option value="MORSE_CW">Morse (CW)</option><option value="FLEX,POCSAG512,POCSAG1200,POCSAG2400,AFSK1200,DTMF">All data</option></select></label>
+    <label>Data decoder<select id="aData"><option value="">none</option><option value="FLEX">P2000 FLEX</option><option value="FLEX,POCSAG512,POCSAG1200,POCSAG2400">Pagers FLEX + POCSAG</option><option value="AFSK1200">APRS / AX.25 (AFSK1200)</option><option value="DTMF,ZVEI1,ZVEI2,CCIR,EEA,EIA">DTMF + selcall</option><option value="MORSE_CW">Morse (CW)</option><option value="RTL433">ISM sensors (rtl_433)</option><option value="FLEX,POCSAG512,POCSAG1200,POCSAG2400,AFSK1200,DTMF">All data</option></select></label>
     <button id="aRec" class="sec" title="record the audio you hear to a WAV file">● Record</button>
   </div>
   <div class="row">
@@ -175,7 +175,7 @@ td button{padding:1px 8px;font-size:12px}
   <div class="row">
     <label>Data VFO MHz<input id="vFreq" type="number" step="0.0001" placeholder="in the captured 10 MHz" style="width:130px"></label>
     <label>Mode<select id="vMode"><option value="nfm">NFM</option><option value="am">AM</option><option value="usb">USB</option></select></label>
-    <label>Decoder<select id="vData"><option value="FLEX">P2000 FLEX</option><option value="FLEX,POCSAG512,POCSAG1200,POCSAG2400">Pagers</option><option value="AFSK1200">APRS</option><option value="DTMF,ZVEI1,CCIR,EEA,EIA">DTMF + selcall</option></select></label>
+    <label>Decoder<select id="vData"><option value="FLEX">P2000 FLEX</option><option value="FLEX,POCSAG512,POCSAG1200,POCSAG2400">Pagers</option><option value="AFSK1200">APRS</option><option value="DTMF,ZVEI1,CCIR,EEA,EIA">DTMF + selcall</option><option value="RTL433">ISM sensors (rtl_433)</option></select></label>
     <button id="vAdd" class="sec">Add data VFO</button>
     <label class="chk"><input id="aRecTx" type="checkbox">Record each scanner transmission</label>
     <span id="vList" class="note"></span>
@@ -1373,6 +1373,8 @@ const PRESETS = [
   { name: 'Marine VHF 156–162 — opt-in', mode: 'nfm', lo: 156e6, hi: 162.05e6, step: 25e3, start: 156.8e6, optin: true },
   { name: 'P2000 pagers 169.650 (FLEX) — opt-in', mode: 'nfm', lo: 169.65e6, hi: 169.65e6, step: 12.5e3, start: 169.65e6, optin: true, pager: 'FLEX', mute: true },
   { name: 'APRS 144.800 (AFSK1200)', mode: 'nfm', lo: 144.8e6, hi: 144.8e6, step: 12.5e3, start: 144.8e6, pager: 'AFSK1200', mute: true },
+  { name: 'ISM 433.92 sensors / remotes (rtl_433)', mode: 'nfm', lo: 433.05e6, hi: 434.79e6, step: 25e3, start: 433.92e6, pager: 'RTL433', mute: true },
+  { name: 'SRD 868 wM-Bus meters (rtl_433)', mode: 'nfm', lo: 868e6, hi: 869.65e6, step: 25e3, start: 868.95e6, pager: 'RTL433', mute: true },
   { name: 'HF 40 m amateur (LSB) 7.0–7.2', mode: 'lsb', lo: 7e6, hi: 7.2e6, step: 1e3, start: 7.1e6 },
   { name: 'HF 20 m amateur (USB) 14.0–14.35', mode: 'usb', lo: 14e6, hi: 14.35e6, step: 1e3, start: 14.2e6 },
   { name: 'Shortwave broadcast (AM) 5.9–6.2', mode: 'am', lo: 5.9e6, hi: 6.2e6, step: 5e3, start: 6.07e6 },
@@ -1403,7 +1405,8 @@ function audioEnsureWorker() {
     if (m.status) { audio.status = m.status; audioReadout(); if (m.status.bank) audioBank(m.status.bank); }
     if (m.spectrum) { audio.spectrum = m.spectrum; audioDraw(); }
     if (m.pager) audioPage(m.pager);
-    if (m.pagerReady) $('#aPagerStat').textContent = `multimon-ng ${m.pagerReady} running, waiting for pages…`;
+    if (m.ism) audioPage(ismPage(m.ism));
+    if (m.pagerReady) $('#aPagerStat').textContent = `${m.pagerReady.startsWith('rtl_433') ? '' : 'multimon-ng '}${m.pagerReady} running, waiting for messages…`;
     if (m.pagerError) $('#aPagerStat').innerHTML = `<span class="bad">pager decoder failed: ${esc(m.pagerError)}</span>`;
   };
 }
@@ -1419,6 +1422,12 @@ function pageClass(text) {
   if (/^\s*(P\s?[12]|PRIO\s?[12]|BR\b)/i.test(text)) return 'fire';
   if (/\b(test|proef)\b/i.test(text)) return 'test';
   return '';
+}
+// rtl_433 JSON -> a row for the pages table (model as protocol, id as address, the remaining fields as text)
+const ISM_SKIP = new Set(['time', 'ts', 't', 'model', 'id', 'vfo', 'freqHz', 'chunk', 'mic', 'rssi', 'noise', 'mod', 'protocol']);
+function ismPage(m) {
+  const text = Object.entries(m).filter(([k, v]) => !ISM_SKIP.has(k) && v !== null && typeof v !== 'object').map(([k, v]) => `${k}=${v}`).join(' ');
+  return { t: m.t || Date.now(), proto: m.model || 'rtl_433', type: m.mod || 'ISM', capcodes: [String(m.id ?? '')], text, freq: m.freqHz, vfo: m.vfo, raw: JSON.stringify(m) };
 }
 const PAGES_MAX = 500;
 function audioPage(p) {
@@ -1548,6 +1557,7 @@ function audioReadout() {
   if (audio.source === 'device') parts.push(`<span>gain ${totalGain(g)} dB</span>`);
   if (s.pager) parts.push(`<span>pages <b>${s.pager.count}</b></span>`);
   if (s.ctcss) parts.push(`<span>CTCSS <b>${s.ctcss.toFixed(1)}</b> Hz</span>`);
+  if (s.vfos && s.vfos[0]) parts.push(`<span>sensors <b>${s.vfos[0].pager.count}</b> (rtl_433 ${(s.vfos[0].cpu || 0).toFixed(0)} ms/2 s)</span>`);
   if (audio.mode === 'usb' || audio.mode === 'lsb' || audio.mode === 'cw') parts.push(`<span>AGC ${(s.ssbGain || 0).toFixed(0)} dB</span>`);
   if (s.vfos) vfoRender(s.vfos);
   $('#aRead').innerHTML = parts.join('');

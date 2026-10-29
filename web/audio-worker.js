@@ -679,6 +679,8 @@ if (typeof importScripts === 'function') {
     for (let i = 0; i < 2048; i++) if (db[i] > specAcc[i]) specAcc[i] = db[i];
     specCount++;
   }
+  // rtl433-live.js (IqChannelizer, Rtl433Live) is plain JS: load it now; the rtl_433 WASM itself is fetched on first use
+  try { importScripts('rtl433-live.js'); } catch (e) { /* ISM decoder stays unavailable */ }
   // multimon-ng WASM for the pager feed, loaded on first use and kept; one decoder instance per Receiver
   let mmWasm = null, mmLoading = null;
   async function pagerAttach(r, demods) {
@@ -694,19 +696,47 @@ if (typeof importScripts === 'function') {
   }
   // extra data-only VFOs (pager/APRS/... decoders on other channels of the same capture)
   const extra = new Map();
-  function closeRx(r) { if (r && r.pagerDec) { r.pagerDec.close(); r.pagerDec = null; } }
+  function closeRx(r) { if (r && r.pagerDec) { r.pagerDec.close(); r.pagerDec = null; } if (r && r.ism) r.ism = null; }
+  // ISM sensors via rtl_433 (web/rtl433-live.js): channelize the raw capture to 250 k (433 MHz) or 1 M (868 MHz wM-Bus)
+  let rtlWasm = null, rtlLoading = null;
+  class IsmVfo {
+    constructor(id, freq, rate, center) {
+      this.id = id; this.freq = freq; this.ismRate = freq > 600e6 ? 1e6 : 250e3; this.ism = null; this.count = 0; this.level = -100;
+      this.ch = new IqChannelizer(rate, freq - center, this.ismRate);
+      this.attach();
+    }
+    async attach() {
+      try {
+        if (!rtlWasm) {
+          rtlLoading = rtlLoading || (async () => { importScripts('tools/rtl_433.js'); return (await fetch('tools/rtl_433.wasm')).arrayBuffer(); })();
+          rtlWasm = await rtlLoading;
+        }
+        if (extra.get(this.id) !== this) return;
+        this.ism = new Rtl433Live(self.create_rtl433, rtlWasm, { rate: this.ismRate, centerHz: this.freq, onMessage: m => { this.count++; postMessage({ ism: { ...m, vfo: this.id } }); } });
+        postMessage({ pagerReady: `rtl_433 @ ${this.ismRate / 1e3} k`, vfo: this.id });
+      } catch (err) { postMessage({ pagerError: String(err), vfo: this.id }); }
+    }
+    process(iq8) {
+      const [I, Q] = this.ch.process(iq8);
+      if (I.length) { const p = power(I, Q); this.level += (10 * Math.log10(p + 1e-12) - this.level) * 0.3; }
+      if (this.ism) this.ism.feed(I, Q);
+    }
+    status() { return { level: this.level, pager: { count: this.count, lastT: 0 }, cpu: this.ism ? this.ism.stats.msPerChunk : 0 }; }
+  }
   onmessage = e => {
     const m = e.data;
     if (m.cmd === 'start') {
       closeRx(rx); for (const r of extra.values()) closeRx(r); extra.clear();
       rx = new Receiver(m); specAcc = null; specCount = 0; postMessage({ started: true, chanRate: rx.fe.chanRate });
-      if (m.pager && (rx.demod.pager || rx.audioTap)) pagerAttach(rx, m.pager);
+      if (m.pager === 'RTL433') extra.set(0, new IsmVfo(0, m.freq, rx.rate, rx.center));
+      else if (m.pager && (rx.demod.pager || rx.audioTap)) pagerAttach(rx, m.pager);
       return;
     }
     if (m.cmd === 'stop') { closeRx(rx); rx = null; for (const r of extra.values()) closeRx(r); extra.clear(); return; }
     if (!rx) return;
     if (m.cmd === 'vfo') {                                       // {id, freq, mode, pager, nfmBw}
       closeRx(extra.get(m.id));
+      if (m.pager === 'RTL433') { extra.set(m.id, new IsmVfo(m.id, m.freq, rx.rate, rx.center)); return; }
       const r = new Receiver({ ...m, rate: rx.rate, center: rx.center, dataOnly: true, squelch: -200 });
       extra.set(m.id, r); if (m.pager) pagerAttach(r, m.pager); return;
     }
@@ -734,7 +764,7 @@ if (typeof importScripts === 'function') {
       if (now - lastStatus > 250) {
         lastStatus = now;
         const msg = { status: rx.status() };
-        if (extra.size) { msg.status.vfos = {}; for (const [id, x] of extra) { const s = x.status(); msg.status.vfos[id] = { freq: x.freq, level: s.level, ctcss: s.ctcss, pager: s.pager }; } }
+        if (extra.size) { msg.status.vfos = {}; for (const [id, x] of extra) { const s = x.status(); msg.status.vfos[id] = { freq: x.freq, level: s.level, ctcss: s.ctcss, pager: s.pager, cpu: s.cpu }; } }
         if (specAcc && specCount >= 8) { msg.spectrum = specAcc; specAcc = null; specCount = 0; }
         postMessage(msg);
       }

@@ -207,7 +207,7 @@ class Rtl433Live {
   }
 }
 
-function u8(v) { v = Math.round(v * 127.5 + 127.5); return v < 0 ? 0 : v > 255 ? 255 : v; }
+function u8(v) { v = (v * 127.5 + 128) | 0; return v < 0 ? 0 : v > 255 ? 255 : v; }
 function s16(v) { return v < -32768 ? -32768 : v > 32767 ? 32767 : v; }
 function relSeconds(t) {       // "@1.234567s" (time:rel in file mode)
   if (typeof t !== 'string') return null;
