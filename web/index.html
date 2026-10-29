@@ -217,6 +217,21 @@ td button{padding:1px 8px;font-size:12px}
     <button id="mapClear" class="sec">Clear</button>
     <span id="mapStat" class="note">positions from the Decodes tab (ADS-B, AIS) and the Audio tab data decoders (APRS) appear here</span>
   </div>
+  <details id="whereBox" style="margin:6px 0 10px">
+    <summary><b>Where am I?</b> <span class="note">estimate the receiver position from what it hears; every source is opt-in and has its own accuracy</span></summary>
+    <div class="row" style="margin-top:8px">
+      <label class="chk"><input class="whereSrc" data-src="cells" type="checkbox"><span style="color:#ff6b6b">●</span> GSM cells via beaconDB <span class="note">(sends the decoded MCC/MNC/LAC/CI to api.beacondb.net)</span></label>
+      <label class="chk"><input class="whereSrc" data-src="adsb" type="checkbox" checked><span style="color:#ffb380">●</span> ADS-B aircraft (local)</label>
+      <label class="chk"><input class="whereSrc" data-src="ais" type="checkbox" checked><span style="color:#6fb3ff">●</span> AIS ships (local)</label>
+      <label class="chk"><input class="whereSrc" data-src="aprs" type="checkbox" checked><span style="color:#7ee787">●</span> APRS heard direct (local)</label>
+      <label class="chk"><input class="whereSrc" data-src="rs41" type="checkbox" checked><span style="color:#d2a8ff">●</span> Radiosondes (local)</label>
+      <label class="chk"><input class="whereSrc" data-src="p2000" type="checkbox" checked><span style="color:#f0c674">●</span> P2000 paging heard (local)</label>
+      <label class="chk"><input class="whereSrc" data-src="mcc" type="checkbox" checked><span style="color:#8a93a3">●</span> GSM country code (local)</label>
+      <label class="chk"><input id="whereGeo" type="checkbox"><span style="color:#fff">●</span> browser geolocation, for comparison</label>
+      <button id="whereRun" class="sec">Estimate</button>
+    </div>
+    <div id="whereOut" class="note"></div>
+  </details>
   <div id="mapDiv" style="height:560px;border:1px solid #2a303b;border-radius:6px;background:#07090c"></div>
 </section>
 
@@ -1812,6 +1827,76 @@ function mapRender() {
   if (pts.length && !leaf._userMoved) leaf.fitBounds(pts, { padding: [30, 30], maxZoom: 11 });
 }
 document.querySelectorAll('.mapLayer').forEach(c => c.onchange = mapRender);
+
+// ---- "Where am I": one position estimate per data source, each with its own accuracy, plus a fused one.
+// Local sources use the fact that a signal was received at all: the receiver lies within a reception radius of every
+// emitter whose position is known, so the estimate is the point that minimises the largest distance to them (minimax
+// centre) with the radius as accuracy. Only the cell-tower source talks to a server (beaconDB, open data).
+const WHERE_COLORS = { cells: '#ff6b6b', adsb: '#ffb380', ais: '#6fb3ff', aprs: '#7ee787', rs41: '#d2a8ff', p2000: '#f0c674', mcc: '#8a93a3', geo: '#fff', fused: '#ff3df2' };
+const WHERE_RADIUS = { adsb: 300e3, ais: 60e3, aprs: 60e3, rs41: 300e3 };            // typical whip-antenna reception range (m)
+const COUNTRY = { 204: { name: 'Netherlands', lat: 52.2, lon: 5.4, r: 160e3 }, 206: { name: 'Belgium', lat: 50.6, lon: 4.6, r: 130e3 }, 262: { name: 'Germany', lat: 51.1, lon: 10.4, r: 400e3 }, 208: { name: 'France', lat: 46.6, lon: 2.4, r: 500e3 }, 270: { name: 'Luxembourg', lat: 49.8, lon: 6.1, r: 40e3 }, 234: { name: 'United Kingdom', lat: 53.0, lon: -1.5, r: 400e3 } };
+let whereLayer = null;
+function haversine(a, b) { const R = 6371e3, toR = Math.PI / 180, dLat = (b.lat - a.lat) * toR, dLon = (b.lon - a.lon) * toR, h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * toR) * Math.cos(b.lat * toR) * Math.sin(dLon / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); }
+function minimaxCentre(pts, reach) {                 // smallest circle around the emitters -> we are near its centre, within reach - radius ... reach
+  let c = { lat: pts.reduce((s, p) => s + p.lat, 0) / pts.length, lon: pts.reduce((s, p) => s + p.lon, 0) / pts.length };
+  for (let it = 0; it < 200; it++) {                 // Badoiu-Clarkson iteration towards the minimax centre
+    let far = pts[0], fd = -1; for (const p of pts) { const d = haversine(c, p); if (d > fd) { fd = d; far = p; } }
+    const k = 1 / (it + 2); c = { lat: c.lat + (far.lat - c.lat) * k, lon: c.lon + (far.lon - c.lon) * k };
+  }
+  let maxD = 0; for (const p of pts) maxD = Math.max(maxD, haversine(c, p));
+  return { lat: c.lat, lon: c.lon, acc: Math.max(reach, maxD * 0.5 + 10e3), n: pts.length, spread: maxD };
+}
+function wherePoints(kind) {
+  const pts = [];
+  if (kind === 'adsb' || kind === 'ais') for (const e of dec.emitters.values()) { const f = e.d.fields || {}; if (e.d.decoder === kind && f.lat != null) pts.push({ lat: f.lat, lon: f.lon }); }
+  if (kind === 'aprs') for (const p of audio.pages) if (p.proto === 'APRS' && p.lat != null && !/\*/.test(p.path || '')) pts.push({ lat: p.lat, lon: p.lon });
+  if (kind === 'rs41') for (const [id, it] of mapItems) if (it.kind === 'rs41') pts.push({ lat: it.lat, lon: it.lon });
+  return pts;
+}
+async function whereCells() {
+  const towers = [];
+  for (const e of dec.emitters.values()) { const f = e.d.fields || {}; if (e.d.decoder === 'gsm' && f.mcc && f.lac && f.ci) towers.push({ radioType: 'gsm', mobileCountryCode: +f.mcc, mobileNetworkCode: +f.mnc, locationAreaCode: +f.lac, cellId: +f.ci }); }
+  if (!towers.length) return { err: 'no GSM cells with LAC/CI decoded yet (Decodes tab, 900/1800 MHz)' };
+  try {
+    const r = await fetch('https://api.beacondb.net/v1/geolocate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cellTowers: towers }) });
+    if (!r.ok) return { err: `beaconDB: HTTP ${r.status}` };
+    const j = await r.json(); return { lat: j.location.lat, lon: j.location.lng, acc: j.accuracy, n: towers.length };
+  } catch (e) { return { err: `beaconDB not reachable from the browser (${e.message}); try: curl -X POST https://api.beacondb.net/v1/geolocate -H 'Content-Type: application/json' -d '${JSON.stringify({ cellTowers: towers }).replace(/'/g, '')}'` }; }
+}
+async function whereRun() {
+  mapShow(); if (!leaf) return;
+  if (!whereLayer) whereLayer = L.layerGroup().addTo(leaf); whereLayer.clearLayers();
+  const on = new Set([...document.querySelectorAll('.whereSrc')].filter(c => c.checked).map(c => c.dataset.src));
+  const est = [], notes = [];
+  for (const k of ['adsb', 'ais', 'aprs', 'rs41']) if (on.has(k)) { const pts = wherePoints(k); if (pts.length) est.push({ src: k, ...minimaxCentre(pts, WHERE_RADIUS[k]) }); else notes.push(`${k}: no positions received yet`); }
+  if (on.has('p2000')) { const n = audio.pages.filter(p => p.proto === 'FLEX' && Math.abs((p.freq || 169.65e6) - 169.65e6) < 5e3).length; if (n) est.push({ src: 'p2000', lat: 52.0, lon: 5.0, acc: 260e3, n, note: 'Dutch national paging network heard: in or near the Netherlands' }); else notes.push('p2000: no pages decoded yet'); }
+  if (on.has('mcc')) {
+    const seen = new Map(); for (const e of dec.emitters.values()) { const f = e.d.fields || {}; if (e.d.decoder === 'gsm' && f.mcc && COUNTRY[f.mcc]) seen.set(+f.mcc, (seen.get(+f.mcc) || 0) + 1); }
+    for (const [mcc, n] of seen) { const c = COUNTRY[mcc]; est.push({ src: 'mcc', lat: c.lat, lon: c.lon, acc: c.r, n, note: `GSM cells of ${c.name} (MCC ${mcc})` }); }
+    if (!seen.size) notes.push('mcc: no GSM cells decoded yet');
+  }
+  if (on.has('cells')) { const c = await whereCells(); if (c.err) notes.push('cells: ' + c.err); else est.push({ src: 'cells', ...c, note: `beaconDB from ${c.n} cell${c.n > 1 ? 's' : ''}` }); }
+  if ($('#whereGeo').checked) await new Promise(res => navigator.geolocation.getCurrentPosition(p => { est.push({ src: 'geo', lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, note: 'browser geolocation' }); res(); }, e => { notes.push('geolocation: ' + e.message); res(); }, { timeout: 8000 }));
+  // fused: inverse-variance weighting of the selected estimates (country-level ones barely count)
+  let fused = null;
+  const usable = est.filter(e => e.src !== 'geo');
+  if (usable.length) { let w = 0, la = 0, lo = 0; for (const e of usable) { const wi = 1 / (e.acc * e.acc); w += wi; la += e.lat * wi; lo += e.lon * wi; } fused = { lat: la / w, lon: lo / w, acc: Math.sqrt(1 / w) }; }
+  const lines = [];
+  for (const e of est) {
+    const col = WHERE_COLORS[e.src];
+    L.circle([e.lat, e.lon], { radius: e.acc, color: col, weight: 1.5, fillColor: col, fillOpacity: 0.06 }).bindPopup(`<b>${e.src}</b> ±${(e.acc / 1e3).toFixed(0)} km<br>${esc(e.note || '')}`).addTo(whereLayer);
+    L.circleMarker([e.lat, e.lon], { radius: 4, color: col, fillColor: col, fillOpacity: 1 }).addTo(whereLayer);
+    lines.push(`<span style="color:${col}">●</span> <b>${e.src}</b>: ${e.lat.toFixed(3)}, ${e.lon.toFixed(3)} ±${(e.acc / 1e3).toFixed(0)} km${e.n ? ` (${e.n} source${e.n > 1 ? 's' : ''})` : ''}${e.note ? ` · ${esc(e.note)}` : ''}`);
+  }
+  if (fused) {
+    L.circle([fused.lat, fused.lon], { radius: fused.acc, color: WHERE_COLORS.fused, weight: 2, dashArray: '6 4', fillOpacity: 0 }).addTo(whereLayer);
+    L.circleMarker([fused.lat, fused.lon], { radius: 6, color: WHERE_COLORS.fused, fillColor: WHERE_COLORS.fused, fillOpacity: 1 }).bindPopup(`<b>fused estimate</b> ±${(fused.acc / 1e3).toFixed(0)} km`).addTo(whereLayer);
+    lines.unshift(`<span style="color:${WHERE_COLORS.fused}">●</span> <b>fused</b>: ${fused.lat.toFixed(3)}, ${fused.lon.toFixed(3)} ±${(fused.acc / 1e3).toFixed(0)} km (inverse-variance mix of the sources below)`);
+    leaf.fitBounds(L.latLng(fused.lat, fused.lon).toBounds(Math.max(fused.acc, 20e3) * 2.5));
+  }
+  $('#whereOut').innerHTML = lines.join('<br>') + (notes.length ? `<br><span class="note">${notes.map(esc).join(' · ')}</span>` : '') + (est.length ? '' : '<br>nothing to estimate from yet: decode something first (Decodes tab for GSM/ADS-B/AIS, Audio tab for APRS/P2000/sondes)');
+}
+$('#whereRun').onclick = whereRun;
 $('#mapClear').onclick = () => { mapItems.clear(); $('#mapCount').textContent = ''; mapRender(); };
 $('#aStart').onclick = () => audio.running ? audioStop() : audioStart();
 

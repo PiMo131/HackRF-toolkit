@@ -49,7 +49,11 @@ position on the map); extra **data VFOs** run more decoders on other channels of
 capture can play a voice channel while logging P2000, a POCSAG network and APRS at once. Modes are
 WFM stereo, NFM (with **CTCSS** readout), AM, **USB/LSB/CW** (HF works on the HackRF Pro). There are
 bookmarks, a **Record** button (WAV) and per-transmission recordings in scanner mode, and a **Map**
-tab that plots ADS-B aircraft, AIS ships and APRS stations from the decoders. The header shows the
+tab that plots ADS-B aircraft, AIS ships, APRS stations and radiosondes from the decoders, and a
+**"Where am I?"** panel that estimates the receiver's own position from what it hears: one estimate per
+opt-in source with its own accuracy circle (ADS-B, AIS, APRS and sondes locally from reception range;
+P2000 and GSM country code at country level; GSM cell IDs through the open beaconDB service, the only
+source that contacts a server), plus an inverse-variance fused estimate. The header shows the
 HackRF Pro extras: bias tee and CLKOUT. The **Satellites** tab predicts passes from bundled orbital
 elements (`web/tle.txt`, refreshed daily by a workflow; satellite.js) for the ISS APRS digipeater and
 FM repeater, SO-50, AO-91, RS-44, Meteor-M2 LRPT and ORBCOMM, and **Track** tunes the receiver to the

@@ -105,6 +105,13 @@ Serve: `python3 -m http.server 8090 --bind 127.0.0.1 --directory web`, open http
   all with position. Browser: 'RS41' decoder option / "Radiosondes 400-406" preset / data VFO; verified end to end with
   the sample upsampled to a 2 Msps ci8 file (web/rs41_test.cs8, git-ignored): 13 frames from 14 s, marker on the Map tab.
   Not yet heard live (De Bilt / Ukkel launches ~01:00 and ~13:00 local).
+* Satellites tab + "Where am I?" (same night): see README. Where-am-I sources: minimax centre of received emitter
+  positions with a reception-range accuracy (ADS-B 300 km, AIS/APRS 60 km, sondes 300 km), P2000 heard -> NL ±260 km,
+  GSM MCC -> country, beaconDB cell geolocation (CORS preflight to api.beacondb.net answers 404, so the browser call
+  fails and the panel prints the equivalent curl; from a shell it returns e.g. 51.68,4.44 ±19 km for the KPN LAC 3350
+  cells, i.e. the Dutch side of the border), fused by inverse variance. Verified with 3 ADS-B aircraft from the
+  reference capture (51.64, 4.42 ±300 km), live P2000 pages and the RS41 test file (which pulls the fused point
+  east, as a Bratislava sonde should).
   Python changes for Pyodide: `_ofdm_util.pmap` (no threads on emscripten), `recording.iq` reads via fromfile (no mmap).
 * Live rtl_433 (2026-10-29): `web/rtl433-live.js` (plain script, importScripts/require; not wired into index.html yet).
   `new Rtl433Live(create_rtl433, wasmBytes, {rate, centerHz, onMessage, chunkS: 2, mergeWindow: 0.25, dedupeS: 1, format: 'cs16',
