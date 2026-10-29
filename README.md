@@ -31,7 +31,7 @@ SigMF files works in any browser; nothing is uploaded.
 | ![2.4 GHz zoom](docs/screenshots/scan-zoom-2400.jpg) **Scan, zoomed:** Wi-Fi and BLE around 2.4 GHz; green = detected regions | ![Decodes tab](docs/screenshots/decodes.jpg) **Decodes:** one click on the 900 MHz band gives 3 GSM cells and an LTE MIB with CRC |
 | ![Offline analysis](docs/screenshots/offline-2290.jpg) **Offline IQ:** a 120 MB SigMF file analysed in the browser in 0.7 s | ![Offline zoom](docs/screenshots/offline-zoom.jpg) **Offline, zoomed:** box-select on the waterfall re-analyses just that time span |
 | ![Audio tab](docs/screenshots/audio-fm-rds.jpg) **Audio:** live FM stereo with RDS (station name, PI, programme type, RadioText), NFM and AM, band scan for stations; plays recordings too | ![Channel scanner](docs/screenshots/scanner-pmr446.jpg) **Scanner:** squelch on every channel of the band at once, auto-lock on the active one, hold, priority, lockouts and a log of transmissions |
-| ![Live P2000 feed](docs/screenshots/audio-p2000.jpg) **Pager feed:** the NFM channel streams into multimon-ng (WebAssembly); live P2000 FLEX pages appear as they arrive, with filter and CSV export | |
+| ![Live P2000 feed](docs/screenshots/audio-p2000.jpg) **Pager feed:** the NFM channel streams into multimon-ng (WebAssembly); live P2000 FLEX pages appear as they arrive, with filter and CSV export | ![Satellites tab](docs/screenshots/satellites.jpg) **Satellites:** passes for the next 24 h from bundled TLEs; Track follows the downlink with Doppler correction |
 
 The **Audio** tab is a receiver: FM broadcast in stereo with RDS, narrowband FM (PMR446, amateur)
 and AM, with presets, squelch, a band scan that lists the stations it hears, and playback of any
@@ -50,7 +50,10 @@ capture can play a voice channel while logging P2000, a POCSAG network and APRS 
 WFM stereo, NFM (with **CTCSS** readout), AM, **USB/LSB/CW** (HF works on the HackRF Pro). There are
 bookmarks, a **Record** button (WAV) and per-transmission recordings in scanner mode, and a **Map**
 tab that plots ADS-B aircraft, AIS ships and APRS stations from the decoders. The header shows the
-HackRF Pro extras: bias tee and CLKOUT. The DSP (`web/audio-worker.js`) is plain JavaScript in a
+HackRF Pro extras: bias tee and CLKOUT. The **Satellites** tab predicts passes from bundled orbital
+elements (`web/tle.txt`, refreshed daily by a workflow; satellite.js) for the ISS APRS digipeater and
+FM repeater, SO-50, AO-91, RS-44, Meteor-M2 LRPT and ORBCOMM, and **Track** tunes the receiver to the
+downlink with the Doppler shift corrected every second. The DSP (`web/audio-worker.js`) is plain JavaScript in a
 worker and uses about a quarter of one core per VFO at 10 Msps; audio goes out through an AudioWorklet.
 
 Source is in `web/`. `web/build.sh` refreshes the Python copy in `web/py` after changes to
