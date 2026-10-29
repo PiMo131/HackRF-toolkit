@@ -76,7 +76,13 @@ Serve: `python3 -m http.server 8090 --bind 127.0.0.1 --directory web`, open http
   mono below ~2 dB, full stereo above ~10 dB on that gauge), 180 kHz IF, AGC frozen once settled (gain steps click),
   player-fill -> resampler rate trim (holds 0.3 s), soft limiter, preallocated resampler. Offline on the 102.7 MHz
   recording: impulses 89/s -> 0.3/s; live: buffer 0.29 s steady, 0 underruns over 35 s. Threshold hiss on weak stations remains.
-  Next: live P2000 feed (stream into multimon-ng WASM), CTCSS display, per-transmission recording.
+* Live pager feed (2026-10-29): `web/tools/src/mm_stream.c` exports mm_stream_open/feed/close from the multimon-ng WASM
+  (`web/build_tools.sh multimon-ng` rebuilds just that tool); `PagerTap` in audio-worker.js takes the raw discriminator
+  -> 6 kHz LPF -> 22050 Hz s16 (±4.8 kHz = ±12000, as native pager.py), `PagerDecoder` feeds it per block and parses the
+  FLEX|...|ALN|text / POCSAG lines. Verified: `tests/web/test_pager_stream.js testdata/p2000_169.sigmf-data 169.95 2 169.65`
+  gives the same 4 pages as native (13x real time at 2 Msps); live on air from Antwerp with the whip: 4 real P2000 pages in
+  the first 40 s (signal -23 dB, DSP 25 %). Preset "P2000 pagers" is opt-in (BIPT) and mutes the audio by default.
+  Next: CTCSS display, per-transmission recording.
   Python changes for Pyodide: `_ofdm_util.pmap` (no threads on emscripten), `recording.iq` reads via fromfile (no mmap).
 * Scan waterfall is 2048 columns over the full range, so it is coarse when zoomed.
 * Native `rfscan capture` hit "capture timeout" at 1089 MHz/20 Msps today while hackrf_transfer worked (see item 0).

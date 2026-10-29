@@ -211,12 +211,67 @@ class NfmDemod {
   process(I, Q) {
     [I, Q] = this.chan.process(I, Q);
     const d = this.disc.process(I, Q);
+    if (this.pager) this.pagerOut = this.pager.process(d);     // raw discriminator, before de-emphasis
     for (let k = 0; k < d.length; k++) { d[k] *= this.devScale; const y = this.deem.y + (d[k] - this.deem.y) * (1 - this.deem.a); this.deem.y = y; d[k] = y; }
     const a = this.rs.process(this.lpf.process(d));
     for (let k = 0; k < a.length; k++) a[k] = softLimit(a[k] * 0.7);
     return { L: a, R: a, stereo: false };
   }
   status() { return {}; }
+}
+// Pager tap: discriminator output -> 6 kHz lowpass -> 22050 Hz s16 (±4.8 kHz deviation = ±12000),
+// the same audio native rfscan pipes into multimon-ng. Decoded by PagerDecoder (multimon-ng WASM).
+const PAGER_RATE = 22050;
+class PagerTap {
+  constructor(fs) {
+    this.lpf = new Fir(lowpassTaps(64, 6000, fs)); this.rs = new Resampler(fs, PAGER_RATE);
+    this.scale = 12000 * fs / (2 * Math.PI * 4800); this.dc = 0;
+  }
+  process(d) {
+    const y = this.rs.process(this.lpf.process(d)), out = new Int16Array(y.length);
+    let dc = this.dc;
+    for (let k = 0; k < y.length; k++) {
+      dc += (y[k] - dc) * 5e-5;                                  // residual carrier offset (~1 s)
+      const v = (y[k] - dc) * this.scale;
+      out[k] = v > 32767 ? 32767 : v < -32767 ? -32767 : v;
+    }
+    this.dc = dc; return out;
+  }
+}
+// Streams 22050 Hz s16 audio into multimon-ng's FLEX/POCSAG demodulators (web/tools/multimon-ng.wasm,
+// entry points in web/tools/src/mm_stream.c). Output lines arrive through Module.print.
+//   FLEX|2026-10-29 09:04:42|1600/2/K/A|07.029|002029582 001420999|ALN|B2 AMBU 18190 ...
+//   POCSAG1200: Address: 1234567  Function: 0  Alpha:   text
+class PagerDecoder {
+  constructor(factory, wasmBinary, demods, onMessage) {
+    this.onMessage = onMessage; this.count = 0; this.lastT = 0;
+    this.M = { wasmBinary, noInitialRun: true, print: l => this.line(l), printErr: () => {} };
+    factory(this.M);
+    this.n = this.M._mm_stream_open(this.M.stringToNewUTF8(demods));
+    this.cap = 8192; this.ptr = this.M._malloc(this.cap * 2);
+  }
+  feed(s16) {
+    for (let i = 0; i < s16.length; i += this.cap) {
+      const c = s16.subarray(i, Math.min(i + this.cap, s16.length));
+      this.M.HEAP16.set(c, this.ptr >> 1);                       // re-read HEAP16: memory may have grown
+      this.M._mm_stream_feed(this.ptr, c.length);
+    }
+  }
+  close() { try { this.M._mm_stream_close(); } catch (e) { /* module state is discarded anyway */ } }
+  line(l) {
+    let msg = null;
+    if (l.startsWith('FLEX')) {
+      const p = l.split('|');
+      if (p.length >= 7) msg = { proto: 'FLEX', mode: p[2], frame: p[3], capcodes: p[4].trim().split(/\s+/), type: p[5], text: p.slice(6).join('|').trim() };
+      else { const m = /^FLEX: \S+ \S+ (\S+) (\S+) \[(\d+)\] (\w+)\s?(.*)$/.exec(l); if (m) msg = { proto: 'FLEX', mode: m[1], frame: m[2], capcodes: [m[3]], type: m[4], text: m[5].trim() }; }
+    } else {
+      const m = /^(POCSAG\d+):\s+Address:\s*(\d+)\s+Function:\s*(\d)\s*(?:(Alpha|Numeric|Skyper):\s*(.*))?$/.exec(l);
+      if (m) msg = { proto: m[1], mode: '', frame: '', capcodes: [m[2]], type: m[4] ? m[4].slice(0, 3).toUpperCase() : 'TON', text: (m[5] || '').trim(), func: +m[3] };
+    }
+    if (!msg) return;
+    msg.t = Date.now(); msg.raw = l; this.count++; this.lastT = msg.t;
+    this.onMessage(msg);
+  }
 }
 // AM (airband): envelope, with slow AGC
 class AmDemod {
@@ -469,6 +524,8 @@ class Receiver {
     this.fe = new FrontEnd(this.rate, this.freq - this.center, bw);
     const fs = this.fe.chanRate;
     this.demod = this.mode === 'wfm' ? new WfmDemod(fs) : this.mode === 'nfm' ? new NfmDemod(fs, cfg.nfmBw || 12.5e3) : new AmDemod(fs);
+    if (cfg.pager && this.mode === 'nfm') this.demod.pager = new PagerTap(fs);
+    this.pagerDec = null;                                        // PagerDecoder, attached by the worker glue once the WASM is loaded
     this.squelchDb = cfg.squelch ?? -200; this.level = -100; this.open = true;
     this.busyMs = 0; this.inSamples = 0;
     this.bank = cfg.scan ? new ChannelBank({ ...cfg.scan, bw: bw / 2 }, this.rate, this.center) : null;
@@ -491,13 +548,16 @@ class Receiver {
     this.open = this.level > this.squelchDb;
     const r = this.demod.process(I, Q);
     if (!this.open) { r.L.fill(0); r.R.fill(0); }
+    if (this.pagerDec && this.demod.pagerOut) this.pagerDec.feed(this.demod.pagerOut);   // never squelched: the decoder has its own sync
     this.busyMs += performance.now() - t;
     return r;
   }
   status() {
     const inS = this.inSamples / this.rate, cpu = inS ? this.busyMs / 1000 / inS : 0;
     this.busyMs = 0; this.inSamples = 0;
-    return { level: this.level, open: this.open, cpu, chanRate: this.fe.chanRate, freq: this.freq, bank: this.bank ? this.bank.status() : null, ...this.demod.status() };
+    const s = { level: this.level, open: this.open, cpu, chanRate: this.fe.chanRate, freq: this.freq, bank: this.bank ? this.bank.status() : null, ...this.demod.status() };
+    if (this.pagerDec) s.pager = { count: this.pagerDec.count, lastT: this.pagerDec.lastT };
+    return s;
   }
 }
 
@@ -512,10 +572,28 @@ if (typeof importScripts === 'function') {
     for (let i = 0; i < 2048; i++) if (db[i] > specAcc[i]) specAcc[i] = db[i];
     specCount++;
   }
+  // multimon-ng WASM for the pager feed, loaded on first use and kept; one decoder instance per Receiver
+  let mmWasm = null, mmLoading = null;
+  async function pagerAttach(r, demods) {
+    try {
+      if (!mmWasm) {
+        mmLoading = mmLoading || (async () => { importScripts('tools/multimon-ng.js'); return (await fetch('tools/multimon-ng.wasm')).arrayBuffer(); })();
+        mmWasm = await mmLoading;
+      }
+      if (rx !== r || !r.demod.pager) return;                   // stopped or retuned while loading
+      r.pagerDec = new PagerDecoder(self.create_multimon, mmWasm, demods, msg => postMessage({ pager: msg }));
+      postMessage({ pagerReady: demods, demods: r.pagerDec.n });
+    } catch (err) { postMessage({ pagerError: String(err) }); }
+  }
   onmessage = e => {
     const m = e.data;
-    if (m.cmd === 'start') { rx = new Receiver(m); specAcc = null; specCount = 0; postMessage({ started: true, chanRate: rx.fe.chanRate }); return; }
-    if (m.cmd === 'stop') { rx = null; return; }
+    if (m.cmd === 'start') {
+      if (rx && rx.pagerDec) rx.pagerDec.close();
+      rx = new Receiver(m); specAcc = null; specCount = 0; postMessage({ started: true, chanRate: rx.fe.chanRate });
+      if (m.pager && rx.demod.pager) pagerAttach(rx, m.pager);
+      return;
+    }
+    if (m.cmd === 'stop') { if (rx && rx.pagerDec) rx.pagerDec.close(); rx = null; return; }
     if (!rx) return;
     if (m.cmd === 'tune') { rx.tune(m.freq); return; }
     if (m.cmd === 'squelch') { rx.squelchDb = m.db; return; }
@@ -545,5 +623,5 @@ if (typeof importScripts === 'function') {
     }
   };
 } else if (typeof module !== 'undefined') {
-  module.exports = { Receiver, FrontEnd, WfmDemod, RdsDecoder, ChannelBank, Spectrum, rdsSyndrome, lowpassTaps, decimPlan };
+  module.exports = { Receiver, FrontEnd, WfmDemod, RdsDecoder, ChannelBank, Spectrum, PagerTap, PagerDecoder, rdsSyndrome, lowpassTaps, decimPlan };
 }

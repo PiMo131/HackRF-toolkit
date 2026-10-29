@@ -49,6 +49,9 @@ td button{padding:1px 8px;font-size:12px}
 .run summary{cursor:pointer;color:var(--text)}
 .run .err{color:var(--bad);white-space:pre-wrap;font-size:11px}
 @media (max-width:640px){header,section,nav{padding-left:16px;padding-right:16px}.wf{height:260px}}
+  td.mono{font-variant-numeric:tabular-nums}
+  td.page-ambu{color:#ffb380}td.page-fire{color:#ff7a7a}td.page-test{color:#8a93a3}
+  #aPages td:last-child{white-space:normal;max-width:700px}
 </style>
 </head>
 <body>
@@ -147,6 +150,8 @@ td button{padding:1px 8px;font-size:12px}
     <label>Volume<input id="aVol" type="range" min="0" max="100" value="60" style="width:120px"></label>
     <label>Squelch dB<input id="aSq" type="range" min="-80" max="0" value="-80" style="width:120px"></label>
     <label class="chk"><input id="aStereo" type="checkbox" checked>Stereo</label>
+    <label class="chk"><input id="aMute" type="checkbox">Mute</label>
+    <label class="chk"><input id="aPager" type="checkbox">Decode pagers (FLEX / POCSAG)</label>
   </div>
   <div class="row">
     <label class="chk"><input id="aScanOn" type="checkbox">Scanner: auto-lock on active channels</label>
@@ -166,6 +171,16 @@ td button{padding:1px 8px;font-size:12px}
     <div class="hint">Channel bank: bar height = dB over that channel's own noise floor; green = squelch open, orange = being played, red = locked out (click a bar to toggle).</div>
     <div class="plotwrap"><canvas id="aBank" style="height:120px"></canvas><div class="hover"></div></div>
     <div class="tablewrap" style="max-height:220px"><table id="aLog"><thead><tr><th>Time</th><th>Channel</th><th>Duration</th><th>Peak over floor</th></tr></thead><tbody></tbody></table></div>
+  </div>
+  <div id="aPagerWrap" style="display:none">
+    <div class="hint">Pager feed: the NFM channel is streamed into multimon-ng (WebAssembly) and every FLEX / POCSAG page appears here as it arrives. Capcodes identify the receiving pager group; P2000 messages start with the priority (A1/A2/B1/B2 ambulance, P 1/P 2 fire brigade).</div>
+    <div class="row">
+      <span id="aPagerStat" class="note">decoder not loaded</span>
+      <label>Filter<input id="aPagerFilter" type="text" placeholder="text or capcode" style="width:200px"></label>
+      <button id="aPagerClear" class="sec">Clear</button>
+      <button id="aPagerCsv" class="sec">Export CSV</button>
+    </div>
+    <div class="tablewrap" style="max-height:320px"><table id="aPages"><thead><tr><th>Time</th><th>Capcode(s)</th><th>Type</th><th>Message</th></tr></thead><tbody></tbody></table></div>
   </div>
 </section>
 
@@ -1313,10 +1328,11 @@ const PRESETS = [
   { name: 'Amateur 70 cm 430–440', mode: 'nfm', lo: 430e6, hi: 440e6, step: 12.5e3, start: 433.5e6 },
   { name: 'Airband 118–137 (AM) — opt-in', mode: 'am', lo: 118e6, hi: 137e6, step: 25e3, start: 121.5e6, optin: true },
   { name: 'Marine VHF 156–162 — opt-in', mode: 'nfm', lo: 156e6, hi: 162.05e6, step: 25e3, start: 156.8e6, optin: true },
+  { name: 'P2000 pagers 169.650 (FLEX) — opt-in', mode: 'nfm', lo: 169.65e6, hi: 169.65e6, step: 12.5e3, start: 169.65e6, optin: true, pager: 'FLEX', mute: true },
   { name: 'Free tuning', mode: 'nfm', lo: 1e6, hi: 6000e6, step: 12.5e3, start: 433.92e6 },
 ];
 const audio = { lockouts: new Set(), win: 0, running: false, source: null, worker: null, ctx: null, node: null, center: 0, rate: AUDIO_RATE_DEV, freq: 100e6, mode: 'wfm',
-  preset: PRESETS[0], gain: { amp: 0, lna: 24, vga: 20 }, hist: new Float64Array(129), nHist: 0, holdAgc: 0, spectrum: null, stations: [], file: null, status: {}, fill: 0 };
+  preset: PRESETS[0], gain: { amp: 0, lna: 24, vga: 20 }, hist: new Float64Array(129), nHist: 0, holdAgc: 0, spectrum: null, stations: [], file: null, status: {}, fill: 0, pages: [] };
 
 for (const [i, p] of PRESETS.entries()) { const o = document.createElement('option'); o.value = i; o.textContent = p.name; $('#aPreset').append(o); }
 function audioPreset(i) {
@@ -1324,6 +1340,8 @@ function audioPreset(i) {
   $('#aMode').value = p.mode; $('#aFreq').value = (p.start / 1e6).toFixed(3); $('#aFreq').step = p.step / 1e6;
   $('#aOptin').style.display = p.optin ? 'block' : 'none';
   $('#aScan').textContent = p.mode === 'wfm' ? 'Find stations' : 'Find active channels';
+  $('#aPager').checked = !!p.pager; $('#aMute').checked = !!p.mute; audioGain();
+  $('#aPagerWrap').style.display = p.pager ? 'block' : 'none';
   if (audio.running) audioTune(p.start, true);
 }
 $('#aPreset').onchange = () => audioPreset(+$('#aPreset').value);
@@ -1337,7 +1355,33 @@ function audioEnsureWorker() {
     if (m.audio) { if (audio.node) audio.node.port.postMessage({ audio: m.audio }, [m.audio]); return; }
     if (m.status) { audio.status = m.status; audioReadout(); if (m.status.bank) audioBank(m.status.bank); }
     if (m.spectrum) { audio.spectrum = m.spectrum; audioDraw(); }
+    if (m.pager) audioPage(m.pager);
+    if (m.pagerReady) $('#aPagerStat').textContent = `multimon-ng ${m.pagerReady} running, waiting for pages…`;
+    if (m.pagerError) $('#aPagerStat').innerHTML = `<span class="bad">pager decoder failed: ${esc(m.pagerError)}</span>`;
   };
+}
+// which multimon-ng demodulators the pager feed runs (FLEX for the P2000 preset, all pager modes elsewhere)
+function pagerDemods(mode) {
+  if (mode !== 'nfm' || !$('#aPager').checked) return null;
+  return audio.preset.pager || 'FLEX,POCSAG512,POCSAG1200,POCSAG2400';
+}
+function audioGain() { if (audio.node) audio.node.port.postMessage({ gain: $('#aMute').checked ? 0 : +$('#aVol').value / 100 }); }
+// P2000 message classes by the leading priority code (ambulance A1/A2/B1/B2, fire brigade P 1/P 2/PRIO)
+function pageClass(text) {
+  if (/^\s*(A[12]|B[12])\b/i.test(text)) return 'ambu';
+  if (/^\s*(P\s?[12]|PRIO\s?[12]|BR\b)/i.test(text)) return 'fire';
+  if (/\b(test|proef)\b/i.test(text)) return 'test';
+  return '';
+}
+const PAGES_MAX = 500;
+function audioPage(p) {
+  audio.pages.push(p); while (audio.pages.length > PAGES_MAX) audio.pages.shift();
+  const tb = $('#aPages tbody'), tr = document.createElement('tr'), cls = pageClass(p.text);
+  tr.dataset.k = `${p.capcodes.join(' ')} ${p.text}`.toLowerCase();
+  tr.innerHTML = `<td>${new Date(p.t).toLocaleTimeString()}</td><td class="mono">${esc(p.capcodes.join(' '))}</td><td>${esc(p.proto === 'FLEX' ? p.type : p.proto + ' ' + p.type)}</td><td${cls ? ` class="page-${cls}"` : ''}>${esc(p.text)}</td>`;
+  const q = $('#aPagerFilter').value.trim().toLowerCase(); if (q && !tr.dataset.k.includes(q)) tr.style.display = 'none';
+  tb.prepend(tr); while (tb.children.length > PAGES_MAX) tb.lastChild.remove();
+  $('#aPagerStat').textContent = `${audio.pages.length} pages, last ${new Date(p.t).toLocaleTimeString()}`;
 }
 async function audioEnsureOutput() {
   if (audio.ctx) { if (audio.ctx.state !== 'running') await audio.ctx.resume(); return; }
@@ -1346,7 +1390,7 @@ async function audioEnsureOutput() {
   audio.node = new AudioWorkletNode(audio.ctx, 'rfscan-player', { outputChannelCount: [2] });
   audio.node.port.onmessage = e => { audio.fill = e.data.fill; audio.underruns = e.data.underruns; if (audio.worker && audio.running) audio.worker.postMessage({ cmd: 'fill', fill: e.data.fill }); };
   audio.node.connect(audio.ctx.destination);
-  audio.node.port.postMessage({ gain: +$('#aVol').value / 100 });
+  audioGain();
 }
 // pick a capture centre that keeps the station off the DC spike and inside the band
 function audioCentreFor(f) {
@@ -1388,8 +1432,10 @@ async function audioStart(fileSrc) {
     await hrf.setSampleRate(audio.rate); await hrf.setFreq(audio.center);
     await applyAudioGains(audio.gain);
   }
-  audio.worker.postMessage({ cmd: 'start', rate: audio.rate, center: audio.center, freq: f, mode, squelch: +$('#aSq').value, scan: scanCfg() });
+  const pager = pagerDemods(mode);
+  audio.worker.postMessage({ cmd: 'start', rate: audio.rate, center: audio.center, freq: f, mode, squelch: +$('#aSq').value, scan: scanCfg(), pager, nfmBw: pager ? 16e3 : undefined });
   $('#aBankWrap').style.display = scanCfg() ? 'block' : 'none'; audio.bank = null; $('#aLock').textContent = '';
+  if (pager) { $('#aPagerWrap').style.display = 'block'; $('#aPagerStat').textContent = 'loading multimon-ng…'; }
   audio.worker.postMessage({ cmd: 'stereo', on: $('#aStereo').checked });
   audio.running = true; audio.hist.fill(0); audio.nHist = 0; audio.agcSettled = false; audio.agcQuiet = 0; audio.holdAgc = 0;
   $('#aStart').textContent = 'Stop'; $('#aRds').textContent = ''; audio.status = {};
@@ -1451,6 +1497,7 @@ function audioReadout() {
   if (audio.mode === 'wfm') parts.push(`<span>${s.stereo ? `<b class="ok">stereo ${Math.round((s.blend || 0) * 100)}%</b>` : 'mono'} (pilot ${((s.pilot || 0) * 100).toFixed(1)}, P/N ${(s.pnr || 0).toFixed(0)} dB)</span>`);
   parts.push(`<span>buffer <b>${(audio.fill || 0).toFixed(2)} s</b>${audio.underruns ? ` (${audio.underruns} underruns)` : ''}</span>`, `<span>DSP <b>${((s.cpu || 0) * 100).toFixed(0)}%</b> of real time</span>`);
   if (audio.source === 'device') parts.push(`<span>gain ${totalGain(g)} dB</span>`);
+  if (s.pager) parts.push(`<span>pages <b>${s.pager.count}</b></span>`);
   $('#aRead').innerHTML = parts.join('');
   const r = s.rds;
   if (r && (r.pi || r.groups)) {
@@ -1583,9 +1630,20 @@ $('#aFreq').onchange = () => audioTune(+$('#aFreq').value * 1e6);
 $('#aMode').onchange = () => { if (audio.running) audioTune(audio.freq, true); };
 $('#aUp').onclick = () => audioTune(Math.round(+$('#aFreq').value * 1e6) + audio.preset.step);
 $('#aDown').onclick = () => audioTune(Math.round(+$('#aFreq').value * 1e6) - audio.preset.step);
-$('#aVol').oninput = () => { if (audio.node) audio.node.port.postMessage({ gain: +$('#aVol').value / 100 }); };
+$('#aVol').oninput = audioGain;
+$('#aMute').onchange = audioGain;
 $('#aSq').oninput = () => { if (audio.worker) audio.worker.postMessage({ cmd: 'squelch', db: +$('#aSq').value }); };
 $('#aStereo').onchange = () => { if (audio.worker) audio.worker.postMessage({ cmd: 'stereo', on: $('#aStereo').checked }); };
+$('#aPager').onchange = () => { $('#aPagerWrap').style.display = $('#aPager').checked ? 'block' : 'none'; if (audio.running) audioStart(audio.source === 'file' ? audio.file : undefined); };
+$('#aPagerFilter').oninput = () => { const q = $('#aPagerFilter').value.trim().toLowerCase(); for (const tr of $('#aPages tbody').children) tr.style.display = !q || tr.dataset.k.includes(q) ? '' : 'none'; };
+$('#aPagerClear').onclick = () => { audio.pages = []; $('#aPages tbody').innerHTML = ''; $('#aPagerStat').textContent = '0 pages'; };
+$('#aPagerCsv').onclick = () => {
+  const esc1 = v => `"${String(v).replace(/"/g, '""')}"`;
+  const rows = [['time', 'protocol', 'type', 'capcodes', 'message', 'raw'], ...audio.pages.map(p => [new Date(p.t).toISOString(), p.proto, p.type, p.capcodes.join(' '), p.text, p.raw])];
+  const blob = new Blob([rows.map(r => r.map(esc1).join(',')).join('\n') + '\n'], { type: 'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `pages_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+};
 $('#oListen').onclick = () => {
   const R = off.res, src = off.src; if (!R) return;
   const f = off.sel ? (off.sel.f0 + off.sel.f1) / 2 : (off.carriers[0] ? off.carriers[0].f : R.fc + R.rate / 4);
