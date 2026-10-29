@@ -17,3 +17,6 @@ __pycache__/
 
 # local Claude Code session settings
 .claude/
+
+# Pages build output
+_site/
