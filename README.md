@@ -43,7 +43,8 @@ ticked (preset "P2000 pagers", opt-in), the demodulated NFM channel is streamed 
 multimon-ng's FLEX/POCSAG decoders inside the audio worker (`web/tools/src/mm_stream.c` adds the
 streaming entry points to the WebAssembly build) and every page is listed live with capcodes, type
 and text. The same path decodes **APRS/AX.25 (AFSK1200), DTMF, ZVEI/CCIR/EEA/EIA selcall and
-Morse**; extra **data VFOs** run more decoders on other channels of the same 10 MHz capture, so one
+Morse**, and **ISM sensors via rtl_433** (433 MHz remotes and weather sensors, 868 MHz wM-Bus meters,
+`web/rtl433-live.js`); extra **data VFOs** run more decoders on other channels of the same 10 MHz capture, so one
 capture can play a voice channel while logging P2000, a POCSAG network and APRS at once. Modes are
 WFM stereo, NFM (with **CTCSS** readout), AM, **USB/LSB/CW** (HF works on the HackRF Pro). There are
 bookmarks, a **Record** button (WAV) and per-transmission recordings in scanner mode, and a **Map**
