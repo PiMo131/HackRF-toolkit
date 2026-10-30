@@ -71,6 +71,13 @@ Source is in `web/`. `web/build.sh` refreshes the Python copy in `web/py` after 
 `rfscan/`; `web/build_tools.sh` rebuilds the two WebAssembly tools. GitHub Pages deploys `web/`
 on every push to `main` (`.github/workflows/pages.yml`).
 
+## Releases and the progress report
+
+Every tag `v*` triggers `.github/workflows/release.yml`, which renders `docs/localisation_status.json` into a
+PDF progress report on passive localisation (Profile Equipment house style, `tools/release_report.py`, headless
+Chrome) and attaches it to the GitHub release. Update the JSON when a method reaches a better accuracy, then
+`git tag -a v0.0.4 -m "..." && git push origin v0.0.4`. Locally: `python3 tools/release_report.py --out dist`.
+
 ## How a scan works
 
 1. **Survey** (`sweep.py`): `hackrf_sweep` over the range. Gain is calibrated per 20 MHz

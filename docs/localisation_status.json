@@ -1,0 +1,50 @@
+{
+  "_comment": "Bron voor tools/release_report.py. Werk dit bestand bij wanneer een methode een beter resultaat haalt. Afstanden in meters; 'best_error_m' is de gemeten fout t.o.v. de bekende positie, 'stated_acc_m' de door de methode zelf opgegeven onzekerheid.",
+  "project": {
+    "name": "rfscan / HackRF-toolkit",
+    "theme": "Passieve RF-lokalisatie zonder GPS",
+    "owner": "Profile Equipment, Willemstad (NL)",
+    "repo": "https://github.com/PiMo131/HackRF-toolkit",
+    "pages": "https://pimo131.github.io/HackRF-toolkit/",
+    "docs": "https://pimo131.github.io/HackRF-toolkit/docs/",
+    "hardware": "HackRF Pro (firmware 2026.01.3), whip-antenne, binnen in een stalen gebouw",
+    "summary": "Wij onderzoeken hoe nauwkeurig een ontvanger zijn eigen positie kan bepalen uit uitsluitend passief ontvangen radiosignalen van bestaande infrastructuur: mobiele netwerken, DAB-omroep, pagers, vliegtuigen, schepen en op termijn LEO-satellieten. Er wordt niets uitgezonden en er is geen GPS-ontvanger nodig. De software draait native (Python) en volledig in de browser (WebUSB), en is open source."
+  },
+  "truth": { "place": "Willemstad, Noord-Brabant", "lat": 51.69, "lon": 4.44, "note": "Referentiepositie voor de foutbepaling; bevestigd door de gebruiker op 2026-10-30." },
+  "target": {
+    "headline": "Positie binnen enkele honderden meters, passief, met één whip-antenne",
+    "acc_m": 300,
+    "description": "Het best haalbare resultaat met de huidige hardware is een combinatie van tijdsverschilmetingen (TDOA) op GPS-gesynchroniseerde zendernetwerken: DAB single-frequency-networks (TII) en 5G NR-basisstations (SSB). Literatuur en onze synthetische tests wijzen op 100 tot 300 m. Daarbovenop blijft de celdatabase als grove maar robuuste laag (0,5 tot 3 km). De volgende stap, Doppler op Starlink-downlinks met een Ku-band LNB, is dezelfde fysica als commerciële passieve LEO-navigatie en kan tientallen meters halen, maar vraagt extra hardware en een eigen baanmodel.",
+    "milestones": [
+      { "label": "Landniveau uit P2000 en GSM-landcode", "acc_m": 160000, "status": "done" },
+      { "label": "Celdatabase offline (GSM LAC/CI)", "acc_m": 3000, "status": "done" },
+      { "label": "LTE/NR-celidentiteit via SIB1-decodering", "acc_m": 1000, "status": "planned" },
+      { "label": "DAB TII TDOA met drie of meer zenders", "acc_m": 300, "status": "partial" },
+      { "label": "5G NR SSB TDOA", "acc_m": 500, "status": "partial" },
+      { "label": "Starlink Doppler via Ku-LNB", "acc_m": 50, "status": "idea" }
+    ]
+  },
+  "methods": [
+    { "name": "Celdatabase offline", "source": "GSM BCCH 900 MHz", "how": "LAC/CI uit de eigen GSM-decoder, opgezocht in de meegeleverde Mozilla Location Service-tabel; gewogen op signaalsterkte en celbereik", "status": "built", "date": "2026-10-30", "estimate": "51.688 N 4.436 E", "best_error_m": 370, "stated_acc_m": 14700, "note": "Beste resultaat tot nu toe. Twee KPN-cellen zijn nieuwer dan de database (2024)." },
+    { "name": "beaconDB (online)", "source": "GSM BCCH 900 MHz", "how": "Dezelfde cellen via de open beaconDB-dienst", "status": "built", "date": "2026-10-30", "estimate": "51.709 N 4.421 E", "best_error_m": 2500, "stated_acc_m": 31700, "note": "Browser-aanroep wordt door CORS geblokkeerd; antwoord via plakveld." },
+    { "name": "Gefuseerde schatting", "source": "alle bronnen", "how": "Inverse-variantieweging van de geselecteerde bronnen", "status": "built", "date": "2026-10-30", "estimate": "51.732 N 4.465 E", "best_error_m": 5000, "stated_acc_m": 31000, "note": "Nachtmeting 29/30 oktober zonder celdatabase; met celdatabase volgt de fusie die laag." },
+    { "name": "GSM-landcode", "source": "GSM BCCH 900 MHz", "how": "MCC van de gehoorde cellen → landzwaartepunt", "status": "built", "date": "2026-10-29", "estimate": "52.2 N 5.4 E", "best_error_m": 86000, "stated_acc_m": 160000, "note": "" },
+    { "name": "P2000 pagernetwerk", "source": "FLEX 169,650 MHz", "how": "Landelijk net gehoord → in of nabij Nederland", "status": "built", "date": "2026-10-29", "estimate": "52.0 N 5.0 E", "best_error_m": 52000, "stated_acc_m": 260000, "note": "" },
+    { "name": "DAB TII TDOA", "source": "DAB Band III 174–240 MHz", "how": "Eigen TII-decoder op het nulsymbool, relatieve vertraging per zender, hyperbolische oplosser met 398 NL/BE-zenders", "status": "partial", "date": "2026-10-30", "estimate": null, "best_error_m": null, "stated_acc_m": null, "note": "Roosendaal en Rotterdam gevonden; derde zender ontbreekt binnen. SFN-offset van ~29 µs gemeten tussen beide." },
+    { "name": "5G NR SSB TDOA", "source": "NR n78 3,4–3,8 GHz", "how": "Sub-sample PSS-timing en SSB-index → framestart per cel; hyperbolische oplosser met 67 masten uit het Antenneregister", "status": "partial", "date": "2026-10-30", "estimate": null, "best_error_m": null, "stated_acc_m": null, "note": "Synthetisch 10 m; binnen geen enkele SSB ontvangen in 3465–3710 MHz." },
+    { "name": "ADS-B / AIS / APRS / radiosondes", "source": "1090 MHz, 162 MHz, 144,8 MHz, 400–406 MHz", "how": "Posities van gehoorde zenders → minimax-middelpunt binnen het ontvangstbereik", "status": "built", "date": "2026-10-29", "estimate": null, "best_error_m": null, "stated_acc_m": 60000, "note": "'s Nachts niets ontvangen; overdag 10–60 km verwacht." }
+  ],
+  "rf_sources": [
+    { "name": "GSM BCCH", "freq": "925–960 MHz", "yields": "MCC/MNC, LAC, Cell ID, signaalsterkte", "use": "Celdatabase (offline en beaconDB), landcode" },
+    { "name": "LTE", "freq": "800 / 900 / 1800 / 2600 MHz, SDL 1,5 GHz", "yields": "PCI, MIB, framestart-timing", "use": "Synchronisatiecheck; celidentiteit wacht op SIB1" },
+    { "name": "5G NR", "freq": "n78 3,4–3,8 GHz", "yields": "PCI, SSB-index, framestart per cel", "use": "SSB TDOA (gNodeB's zijn GPS-gesynchroniseerd)" },
+    { "name": "DAB / DAB+", "freq": "Band III 174–240 MHz", "yields": "Ensemble, TII-code en vertraging per zender", "use": "SFN TDOA met publieke zenderposities" },
+    { "name": "P2000 (FLEX)", "freq": "169,650 MHz", "yields": "Pagerberichten", "use": "Landniveau" },
+    { "name": "ADS-B", "freq": "1090 MHz", "yields": "Posities van vliegtuigen", "use": "Ontvangstbereik-middelpunt (±300 km)" },
+    { "name": "AIS", "freq": "161,975 / 162,025 MHz", "yields": "Posities van schepen", "use": "Ontvangstbereik-middelpunt langs vaarwater (±60 km)" },
+    { "name": "APRS", "freq": "144,800 MHz", "yields": "Posities van amateurstations", "use": "Ontvangstbereik-middelpunt (±60 km)" },
+    { "name": "RS41-radiosondes", "freq": "400–406 MHz", "yields": "Positie van weerballonnen", "use": "Ontvangstbereik-middelpunt (±300 km)" },
+    { "name": "FM met RDS", "freq": "87,5–108 MHz", "yields": "PI-code van de zender", "use": "Gepland: lokale zenders begrenzen de positie tot 10–20 km" },
+    { "name": "Starlink / LEO-downlinks", "freq": "Ku 10,7–12,7 GHz via LNB", "yields": "Doppler per satellietpassage", "use": "Idee: passieve LEO-navigatie; vraagt LNB en baanmodel" }
+  ]
+}
