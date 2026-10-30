@@ -200,7 +200,9 @@ Receiver is in **Willemstad NL (≈51.69N 4.44E)**, which the user confirmed thi
 * **Next steps:** outdoors (or at a window) repeat the n78 and DAB captures; DAB with the front-end amp on; calibrate
   SFN offsets at the known position; SIB1 decoding for LTE cell identities; then wire the three native tools into
   the browser (they already emit the Where-am-I estimate JSON).
-* **Release report (2026-10-30):** `tools/release_report.py` + `docs/localisation_status.json` → PDF in Profile Equipment
-  house style (Inter/Space Grotesk, ink #17150E, gold #C2A202; logo is used when `docs/report/logo.svg` exists, else a
-  wordmark). `.github/workflows/release.yml` builds it on every `v*` tag and creates the GitHub release with the PDF.
+* **Release report (2026-10-30):** `tools/release_report.py` + `docs/localisation_status.json` → PDF following the
+  Huisstijlhandboek Profile Equipment v1.0 (repo PiMo131/huisstijlen, private): Aptos/Arial (Liberation Sans on CI),
+  Profile donker #474220 for h1 and table heads, Profile goud #C2A202 for h2 and accents, near-black text, logo in
+  colour top right on every page (< 4.5 cm, `docs/report/logo.svg` = the official 'Profile Equipment - kleur.svg'),
+  footer with document name and 'Pagina X van Y' in 8 pt grey, no dark blocks or effects. `.github/workflows/release.yml` builds it on every `v*` tag and creates the GitHub release with the PDF.
   First release: v0.0.3.
