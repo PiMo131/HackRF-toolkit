@@ -20,7 +20,7 @@ CRC level, offline SigMF analysis, the channel-bank scanner.
 | Long-term monitoring: heatmap, occupancy, new-signal alerts | hb9tf/spectre, Ossmann BH2017 | days | **done** natively (`rfscan monitor`) |
 | HackRF Pro extras | GSG Pro Q&A, libhackrf 0.10 | hours | bias tee + CLKOUT **done**; 16-bit mode has no libhackrf API (only the FPGA "narrowband filter" request 53, effect unknown), temperature request 62 returns nothing on API 1.10 |
 | DAB+ audio | BrowserSDR claims it | weeks | not done (see research-live-audio.md) |
-| ACARS / VDL2 | OpenWebRX+, BrowSDR | days | not done; airband listening is not permitted in Belgium (BIPT), would be opt-in |
+| ACARS / VDL2 | OpenWebRX+, BrowSDR | days | not done; kept opt-in (receiving is legal in NL, passing on the content is not; in Belgium BIPT forbids listening) |
 | DMR / NXDN / D-STAR via mbelib | OpenWebRX+ (separate image), BrowSDR PR #13 | days | not done, patent risk |
 | Weather satellite images | SDRangel, Mayhem | weeks | not done, see below |
 | Transmit (Mayhem) | | | deliberately never |

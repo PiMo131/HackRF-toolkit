@@ -2,8 +2,9 @@
 
 ## Current state
 * Working end to end: survey → plan → auto-gain dwell → async analysis → SQLite/events/report.
-* Verified on real air (the location is actually **Belgium, Antwerp area**: MCC 206 GSM cells,
-  aircraft near 51.2N 4.3E; P2000 from NL is also received):
+* Verified on real air. **Location (confirmed by the user 2026-10-30): Willemstad, Noord-Brabant, NL,
+  ≈51.69N 4.44E.** Earlier notes, the `iq_archive/2026-10-19_antwerp` directory name and the first reports
+  wrongly assumed Antwerp/Belgium; the Dutch GSM/LTE cells and P2000 pages are simply the local networks.
   GSM (45 cells, SCH parity + SI3/4), LTE MIB CRC (17 cells, B1/3/7/8/20/28/69),
   NR n28/n78 PSS+SSS (sync), ADS-B CRC, P2000 FLEX BCH, BLE adv CRC, AIS CRC, DAB 12A/12C.
 * LoRa and rtl_433 pass synthetic tests; there was no real traffic in test captures yet.
@@ -33,7 +34,7 @@ Live dashboard: `./rfscan.sh dashboard [run]`. Scan focus mode: `./rfscan.sh sca
    saved but not decoded. A Z-Wave decoder (FSK 9.6/40/100 kbps, checksum/CRC) would be a good addition.
 4. NR MIB (polar decode) is not implemented, so NR stays at sync level.
 5. Band plan is NL/CEPT; Belgian operators were added to the GSM map only. Consider a BE profile.
-6. The `testdata/` regression set (2.1 GB) was recorded in the Antwerp area. Delete it if space is needed.
+6. The `testdata/` regression set (2.1 GB) was recorded at Willemstad (NL). Delete it if space is needed.
 
 ## Resume
 ```
@@ -83,7 +84,7 @@ Serve: `python3 -m http.server 8090 --bind 127.0.0.1 --directory web`, open http
   (`web/build_tools.sh multimon-ng` rebuilds just that tool); `PagerTap` in audio-worker.js takes the raw discriminator
   -> 6 kHz LPF -> 22050 Hz s16 (±4.8 kHz = ±12000, as native pager.py), `PagerDecoder` feeds it per block and parses the
   FLEX|...|ALN|text / POCSAG lines. Verified: `tests/web/test_pager_stream.js testdata/p2000_169.sigmf-data 169.95 2 169.65`
-  gives the same 4 pages as native (13x real time at 2 Msps); live on air from Antwerp with the whip: 4 real P2000 pages in
+  gives the same 4 pages as native (13x real time at 2 Msps); live on air from Willemstad with the whip: 4 real P2000 pages in
   the first 40 s (signal -23 dB, DSP 25 %). Preset "P2000 pagers" is opt-in (BIPT) and mutes the audio by default.
 * 2026-10-29 evening (web): SSB/CW demod (`SsbDemod`), CTCSS Goertzel bank, multimon-ng streaming now also runs
   AFSK1200 (APRS, aprs_mode=1 -> "APRS: SRC>DST,PATH:payload"), DTMF, ZVEI/CCIR/EEA/EIA, MORSE_CW; data-only extra
@@ -162,3 +163,40 @@ in the venv): the PNG is written by a small built-in encoder, the report embeds 
   (14.3 dB, occupancy 0.57, first in survey 2 at 11:04, 8 dB in survey 1, absent on 10-19); plus things that
   differ from the 10-19 site: GSM 900 DL at 940 MHz (+32 dB), LTE B20 813 MHz, B32 SDL 1471/1478 MHz, 1120 MHz DME,
   TETRA 390.5/384.5 MHz. The first survey of a run is the noisiest; `--min-persist 1` hides the one-offs.
+
+## Passive localisation (2026-10-30, three subagents on Opus at the user's request)
+Receiver is in **Willemstad NL (≈51.69N 4.44E)**, which the user confirmed this morning; the night test of
+2026-10-29 was inside a steel building. Captures for this work: `runs/locate_20261030/` (DAB 207/224 MHz 10 s and
+12C/11C/9C 60 s at 2.048 Msps; n78 3465…3700 MHz 2 s; LTE B8/B20/B3/B7/B32 1 s; GSM 937 MHz 6 s).
+* **Offline cell database** (`rfscan/cellpos.py`, `web/cells/{204,206,262}.csv.gz`, 12 MB, GSM only): beaconDB has
+  no export, OpenCelliD needs a token, so the data is the final Mozilla Location Service cell export (archive.org
+  item `MLS_Full_Cell_Export_Final`, CC0, 2024-03). Lookup by MCC/MNC/LAC/CI, power- and 1/range-weighted estimate,
+  LAC-centroid fallback only when no CI matches. Result: run 10-29 → 51.688, 4.436 (0.37 km off); gsm_937 → 0.56 km
+  off; stated ± is ~15 km because MLS ranges are 17–32 km. KPN CIs 56061/56062 are newer than MLS. Browser: Where-am-I
+  checkbox "cell DB (offline)" (fetch + DecompressionStream) and an "extra estimates JSON" paste box. Tests:
+  `tests/cells/test_cellpos.py`, `tests/web/test_celldb.js`. LTE/NR cells cannot be matched (databases key on
+  ECI/TAC; we only decode PCI + MIB) → next step is SIB1 decoding. Notes: `docs/notes-cells-offline.md`.
+* **DAB TII TDOA** (`rfscan/tdoa_dab.py`, `rfscan/data/dab_tx.json` with 398 NL/BE transmitters incl. TII codes from
+  radio-tv-nederland.nl / wohnort / fmtvdx and positions from the Antenneregister WFS): own numpy TII decoder
+  (welle-cli's TII is integer-sample only and loses sync at the -5 dB channel SNR here), coherent null-symbol
+  averaging over the TII-bearing alternate frames, lobe disambiguation against the PRS impulse response, weighted
+  Gauss-Newton hyperbolic solver. Finds Roosendaal (12C 4-10, 11C 21-20, 9C 19-20) and Rotterdam (9C 19-05, 12C 4-05
+  tentative) at 20–27 dB; Dordrecht/Breda stay 5 dB under the threshold, so **no fix yet (needs ≥ 3 sites)**.
+  A 60 s capture (`--max-s 60`) lifts Roosendaal from 27 to 34 dB as expected, but no further site appears: indoors the SFN is effectively one transmitter. Also found: the SFN is not delay-free; Roosendaal transmits ≈29 µs
+  late relative to Rotterdam (both 9C and 12C agree), so per-site `offset_us` calibration is needed before a fix
+  can be trusted. Captures at 20 Msps show USB sample drops (frame spacing jumps), handled per frame. Test:
+  `tests/tdoa/test_dab_tii.py` (synthetic 5-transmitter network: 5 m error). Notes: `docs/notes-dab-tii.md`.
+* **NR SSB TDOA** (`rfscan/tdoa.py` generic solver, `rfscan/tdoa_nr.py`, opt-in timing additions in
+  `rfscan/decoders/nr.py`: sub-sample PSS timing, case-C frame-start, SSB index, periodicity, stronger-cell
+  cancellation): synthetic 3-cell test recovers offsets within 5 ns and a position within 10 m. **No real fix:**
+  none of the seven n78 windows (3465–3710 MHz) contains an SSB indoors; only uplink bursts at 3580 and a 4 MHz
+  signal at 3457 MHz. LTE: never two cells in one 10-30 capture; in the 10-19 `lte800_806` capture PCIs 334/497
+  differ by a stable 1.23 µs (std 0.13 µs), which looks like phase-synchronised FDD, one pair only. Site data:
+  67 n78 masts within 15 km from the Antenneregister WFS, operator by 2024 auction block (VodafoneZiggo 3450–3550,
+  Odido 3550–3650, KPN 3650–3750), nearest KPN+Odido mast 260 m away; no public PCI→site mapping, so
+  `rfscan/data/nr_sites_willemstad.json` holds candidates and `--assign` searches assignments (low confidence).
+  HackRF sample-clock drift varies −0.4…+5.9 ppm between captures, so cells are only compared within one capture
+  against an interpolated reference. Test: `tests/tdoa/test_tdoa_nr.py`. Notes: `docs/notes-nr-tdoa.md`.
+* **Next steps:** outdoors (or at a window) repeat the n78 and DAB captures; DAB with the front-end amp on; calibrate
+  SFN offsets at the known position; SIB1 decoding for LTE cell identities; then wire the three native tools into
+  the browser (they already emit the Where-am-I estimate JSON).

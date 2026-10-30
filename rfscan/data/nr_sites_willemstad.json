@@ -1,0 +1,1764 @@
+{
+ "_comment": "NR (n78) gNodeB candidate sites around Willemstad NB (51.69 N, 4.44 E) for rfscan.tdoa_nr. Top-level keys 'PCI' or 'PCI@SSB-MHz' map a decoded cell to a site {lat, lon, h, site, operator, confidence}; keys starting with '_' are ignored by the solver. Source: Antenneregister (RDI) WFS https://antenneregister.nl/mapserver/wfs/ layers ms:Antennes + Antennes_Groepen, fetched 2026-10-30, RD->WGS84 (Schreutelaar polynomial, ~1 m). The register has no operator field and no PCI: operator is attributed from the registered n78 centre frequency (3500/3600/3700 MHz -> VodafoneZiggo/Odido/KPN, 2024 auction blocks), cross-checked by each site's other registered bands. Sectors within 60 m of the same operator merged into one mast. dist_km_from_survey_point is relative to the validation point and must not be used as a prior in a fix.",
+ "_band_plan_n78": {
+  "VodafoneZiggo": [
+   3450,
+   3550
+  ],
+  "Odido": [
+   3550,
+   3650
+  ],
+  "KPN": [
+   3650,
+   3750
+  ],
+  "_source": "Kamerstuk 24095 nr. 587 (kst-24095-587); Rijksoverheid news 2024-07-01 (3.5 GHz auction results)"
+ },
+ "_candidates": {
+  "KPN": [
+   {
+    "lat": 51.69194,
+    "lon": 4.437941,
+    "h": 26.9,
+    "site": "4797AA  (Moerdijk)",
+    "register_ids": [
+     "57744",
+     "57745",
+     "57746"
+    ],
+    "azimuths": [
+     20.0,
+     150.0,
+     260.0
+    ],
+    "dist_km_from_survey_point": 0.258,
+    "other_freqs": [
+     "5G NR 2160 MHz",
+     "5G NR 3700 MHz",
+     "5G NR 773 MHz",
+     "GSM 900 935.2-945 MHz",
+     "LTE 1474.5 MHz",
+     "LTE 1815 MHz",
+     "LTE 816 MHz",
+     "LTE 940 MHz"
+    ]
+   },
+   {
+    "lat": 51.673877,
+    "lon": 4.433014,
+    "h": 23.5,
+    "site": "4797SG  (Moerdijk)",
+    "register_ids": [
+     "57445"
+    ],
+    "azimuths": [
+     60.0,
+     200.0,
+     300.0
+    ],
+    "dist_km_from_survey_point": 1.856,
+    "other_freqs": [
+     "5G NR 2160 MHz",
+     "5G NR 3700 MHz",
+     "5G NR 773 MHz",
+     "GSM 900 935.2-945 MHz",
+     "LTE 1474.5 MHz",
+     "LTE 1815 MHz",
+     "LTE 2660 MHz",
+     "LTE 816 MHz",
+     "LTE 940 MHz"
+    ]
+   },
+   {
+    "lat": 51.745135,
+    "lon": 4.448828,
+    "h": 30.2,
+    "site": "3281NB  (Cromstrijen)",
+    "register_ids": [
+     "58925"
+    ],
+    "azimuths": [
+     60.0,
+     200.0,
+     300.0
+    ],
+    "dist_km_from_survey_point": 6.161,
+    "other_freqs": [
+     "5G NR 2160 MHz",
+     "5G NR 3700 MHz",
+     "5G NR 773 MHz",
+     "GSM 900 935.2-945 MHz",
+     "LTE 1474.5 MHz",
+     "LTE 1815 MHz",
+     "LTE 2660 MHz",
+     "LTE 816 MHz",
+     "LTE 940 MHz"
+    ]
+   },
+   {
+    "lat": 51.635985,
+    "lon": 4.468612,
+    "h": 23.8,
+    "site": "4793ER  (Moerdijk)",
+    "register_ids": [
+     "62960",
+     "62961",
+     "62959"
+    ],
+    "azimuths": [
+     50.0,
+     150.0,
+     310.0
+    ],
+    "dist_km_from_survey_point": 6.322,
+    "other_freqs": [
+     "5G NR 2160 MHz",
+     "5G NR 3700 MHz",
+     "5G NR 773 MHz",
+     "GSM 900 935.2-945 MHz",
+     "LTE 1474.5 MHz",
+     "LTE 1815 MHz",
+     "LTE 816 MHz",
+     "LTE 940 MHz"
+    ]
+   },
+   {
+    "lat": 51.636094,
+    "lon": 4.547641,
+    "h": 34.5,
+    "site": "4791SK  (Moerdijk)",
+    "register_ids": [
+     "51013"
+    ],
+    "azimuths": [
+     0.0,
+     120.0,
+     240.0
+    ],
+    "dist_km_from_survey_point": 9.542,
+    "other_freqs": [
+     "5G NR 2160 MHz",
+     "5G NR 3700 MHz",
+     "5G NR 773 MHz",
+     "GSM 900 935.2-945 MHz",
+     "LTE 1474.5 MHz",
+     "LTE 1815 MHz",
+     "LTE 2660 MHz",
+     "LTE 816 MHz",
+     "LTE 940 MHz"
+    ]
+   },
+   {
+    "lat": 51.737377,
+    "lon": 4.561049,
+    "h": 25.1,
+    "site": "3291EM  (Strijen)",
+    "register_ids": [
+     "58527",
+     "58528",
+     "58529"
+    ],
+    "azimuths": [
+     20.0,
+     160.0,
+     290.0
+    ],
+    "dist_km_from_survey_point": 9.864,
+    "other_freqs": [
+     "5G NR 2160 MHz",
+     "5G NR 3700 MHz",
+     "5G NR 773 MHz",
+     "GSM 900 935.2-945 MHz",
+     "LTE 1474.5 MHz",
+     "LTE 1815 MHz",
+     "LTE 816 MHz",
+     "LTE 940 MHz"
+    ]
+   },
+   {
+    "lat": 51.605989,
+    "lon": 4.50248,
+    "h": 38.4,
+    "site": "4751SE  (Halderberge)",
+    "register_ids": [
+     "62208"
+    ],
+    "azimuths": [
+     50.0,
+     180.0,
+     300.0
+    ],
+    "dist_km_from_survey_point": 10.288,
+    "other_freqs": [
+     "5G NR 2160 MHz",
+     "5G NR 3700 MHz",
+     "5G NR 773 MHz",
+     "GSM 900 935.2-945 MHz",
+     "LTE 1474.5 MHz",
+     "LTE 1815 MHz",
+     "LTE 2660 MHz",
+     "LTE 816 MHz",
+     "LTE 940 MHz"
+    ]
+   },
+   {
+    "lat": 51.681162,
+    "lon": 4.609836,
+    "h": 38.7,
+    "site": "4782SM  (Moerdijk)",
+    "register_ids": [
+     "57465",
+     "57464",
+     "57466"
+    ],
+    "azimuths": [
+     60.0,
+     180.0,
+     300.0
+    ],
+    "dist_km_from_survey_point": 11.749,
+    "other_freqs": [
+     "5G NR 2160 MHz",
+     "5G NR 3700 MHz",
+     "5G NR 773 MHz",
+     "GSM 900 935.2-945 MHz",
+     "LTE 1474.5 MHz",
+     "LTE 1815 MHz",
+     "LTE 2660 MHz",
+     "LTE 816 MHz",
+     "LTE 940 MHz"
+    ]
+   },
+   {
+    "lat": 51.644534,
+    "lon": 4.608673,
+    "h": 34.1,
+    "site": "4761BV  (Moerdijk)",
+    "register_ids": [
+     "62992"
+    ],
+    "azimuths": [
+     0.0,
+     100.0,
+     250.0
+    ],
+    "dist_km_from_survey_point": 12.684,
+    "other_freqs": [
+     "5G NR 2160 MHz",
+     "5G NR 3700 MHz",
+     "5G NR 773 MHz",
+     "GSM 900 935.2-945 MHz",
+     "LTE 1474.5 MHz",
+     "LTE 1815 MHz",
+     "LTE 2660 MHz",
+     "LTE 816 MHz",
+     "LTE 940 MHz"
+    ]
+   },
+   {
+    "lat": 51.683847,
+    "lon": 4.638364,
+    "h": 38.6,
+    "site": "4782PD  (Moerdijk)",
+    "register_ids": [
+     "57479"
+    ],
+    "azimuths": [
+     30.0,
+     140.0,
+     260.0
+    ],
+    "dist_km_from_survey_point": 13.692,
+    "other_freqs": [
+     "5G NR 2160 MHz",
+     "5G NR 3700 MHz",
+     "5G NR 773 MHz",
+     "GSM 900 935.2-945 MHz",
+     "LTE 1474.5 MHz",
+     "LTE 1815 MHz",
+     "LTE 2660 MHz",
+     "LTE 816 MHz",
+     "LTE 940 MHz"
+    ]
+   },
+   {
+    "lat": 51.559737,
+    "lon": 4.471625,
+    "h": 38.7,
+    "site": "4704RV  (Roosendaal)",
+    "register_ids": [
+     "61018"
+    ],
+    "azimuths": [
+     60.0,
+     190.0,
+     300.0
+    ],
+    "dist_km_from_survey_point": 14.648,
+    "other_freqs": [
+     "5G NR 2160 MHz",
+     "5G NR 3700 MHz",
+     "5G NR 773 MHz",
+     "GSM 900 935.2-945 MHz",
+     "LTE 1474.5 MHz",
+     "LTE 1815 MHz",
+     "LTE 2660 MHz",
+     "LTE 816 MHz",
+     "LTE 940 MHz"
+    ]
+   },
+   {
+    "lat": 51.683615,
+    "lon": 4.655822,
+    "h": 38.7,
+    "site": "4782PD  (Moerdijk)",
+    "register_ids": [
+     "57476"
+    ],
+    "azimuths": [
+     100.0,
+     260.0,
+     350.0
+    ],
+    "dist_km_from_survey_point": 14.895,
+    "other_freqs": [
+     "5G NR 2160 MHz",
+     "5G NR 3700 MHz",
+     "5G NR 773 MHz",
+     "GSM 900 935.2-945 MHz",
+     "LTE 1474.5 MHz",
+     "LTE 1815 MHz",
+     "LTE 2660 MHz",
+     "LTE 816 MHz",
+     "LTE 940 MHz"
+    ]
+   }
+  ],
+  "Odido": [
+   {
+    "lat": 51.691994,
+    "lon": 4.43794,
+    "h": 26.8,
+    "site": "4797AA  (Moerdijk)",
+    "register_ids": [
+     "21955"
+    ],
+    "azimuths": [
+     130.0,
+     215.0,
+     310.0
+    ],
+    "dist_km_from_survey_point": 0.263,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.729328,
+    "lon": 4.42944,
+    "h": 37.3,
+    "site": "3281BR  (Cromstrijen)",
+    "register_ids": [
+     "22007"
+    ],
+    "azimuths": [
+     20.0,
+     120.0,
+     240.0
+    ],
+    "dist_km_from_survey_point": 4.433,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.661802,
+    "lon": 4.381191,
+    "h": 30.1,
+    "site": "4794SL  (Moerdijk)",
+    "register_ids": [
+     "26877"
+    ],
+    "azimuths": [
+     30.0,
+     110.0,
+     210.0
+    ],
+    "dist_km_from_survey_point": 5.126,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.638429,
+    "lon": 4.452498,
+    "h": 34.8,
+    "site": "4793RB  (Moerdijk)",
+    "register_ids": [
+     "368"
+    ],
+    "azimuths": [
+     80.0,
+     190.0,
+     320.0
+    ],
+    "dist_km_from_survey_point": 5.799,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.679852,
+    "lon": 4.354256,
+    "h": 20.6,
+    "site": "3257LB  (Oostflakkee)",
+    "register_ids": [
+     "26935"
+    ],
+    "azimuths": [
+     90.0,
+     330.0
+    ],
+    "dist_km_from_survey_point": 6.018,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.745198,
+    "lon": 4.44887,
+    "h": 38.5,
+    "site": "3281NB  (Cromstrijen)",
+    "register_ids": [
+     "9412"
+    ],
+    "azimuths": [
+     100.0,
+     250.0,
+     350.0
+    ],
+    "dist_km_from_survey_point": 6.168,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.644533,
+    "lon": 4.385244,
+    "h": 32.7,
+    "site": "4671RN  (Steenbergen)",
+    "register_ids": [
+     "380"
+    ],
+    "azimuths": [
+     50.0,
+     220.0
+    ],
+    "dist_km_from_survey_point": 6.31,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.664796,
+    "lon": 4.5341,
+    "h": 18.7,
+    "site": "4791HE  (Moerdijk)",
+    "register_ids": [
+     "26882"
+    ],
+    "azimuths": [
+     21.0,
+     105.0,
+     208.0,
+     285.0
+    ],
+    "dist_km_from_survey_point": 7.068,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.637901,
+    "lon": 4.371898,
+    "h": 36.1,
+    "site": "4671CD  (Steenbergen)",
+    "register_ids": [
+     "359"
+    ],
+    "azimuths": [
+     120.0,
+     210.0,
+     300.0
+    ],
+    "dist_km_from_survey_point": 7.458,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.753906,
+    "lon": 4.369885,
+    "h": 21.8,
+    "site": "3284XN  (Korendijk)",
+    "register_ids": [
+     "9430"
+    ],
+    "azimuths": [
+     120.0,
+     240.0,
+     355.0
+    ],
+    "dist_km_from_survey_point": 8.592,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.768516,
+    "lon": 4.44782,
+    "h": 29.7,
+    "site": "3286AR  (Cromstrijen)",
+    "register_ids": [
+     "7609"
+    ],
+    "azimuths": [
+     0.0,
+     240.0
+    ],
+    "dist_km_from_survey_point": 8.747,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.662614,
+    "lon": 4.562023,
+    "h": 30.1,
+    "site": "4761PK  (Moerdijk)",
+    "register_ids": [
+     "26878"
+    ],
+    "azimuths": [
+     0.0,
+     120.0,
+     240.0
+    ],
+    "dist_km_from_survey_point": 8.948,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.68928,
+    "lon": 4.579513,
+    "h": 30.9,
+    "site": "4782PM  (Moerdijk)",
+    "register_ids": [
+     "21943"
+    ],
+    "azimuths": [
+     20.0,
+     150.0,
+     250.0
+    ],
+    "dist_km_from_survey_point": 9.617,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.775437,
+    "lon": 4.393207,
+    "h": 28.4,
+    "site": "3284LA  (Korendijk)",
+    "register_ids": [
+     "7746"
+    ],
+    "azimuths": [
+     50.0,
+     140.0
+    ],
+    "dist_km_from_survey_point": 10.032,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.611644,
+    "lon": 4.523016,
+    "h": 39.7,
+    "site": "4758AB  (Moerdijk)",
+    "register_ids": [
+     "9046"
+    ],
+    "azimuths": [
+     60.0,
+     180.0,
+     300.0
+    ],
+    "dist_km_from_survey_point": 10.427,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.753212,
+    "lon": 4.558007,
+    "h": 39.0,
+    "site": "3291CN  (Strijen)",
+    "register_ids": [
+     "9428"
+    ],
+    "azimuths": [
+     200.0,
+     320.0
+    ],
+    "dist_km_from_survey_point": 10.746,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.785821,
+    "lon": 4.469548,
+    "h": 37.3,
+    "site": "3273AB  (Binnenmaas)",
+    "register_ids": [
+     "7783"
+    ],
+    "azimuths": [
+     30.0,
+     180.0,
+     300.0
+    ],
+    "dist_km_from_survey_point": 10.847,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.649458,
+    "lon": 4.585758,
+    "h": 36.2,
+    "site": "4761PZ  (Moerdijk)",
+    "register_ids": [
+     "26853"
+    ],
+    "azimuths": [
+     80.0,
+     160.0,
+     290.0
+    ],
+    "dist_km_from_survey_point": 11.016,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.690379,
+    "lon": 4.60489,
+    "h": 28.3,
+    "site": "4782SB  (Moerdijk)",
+    "register_ids": [
+     "21947"
+    ],
+    "azimuths": [
+     0.0,
+     120.0,
+     240.0
+    ],
+    "dist_km_from_survey_point": 11.366,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.669374,
+    "lon": 4.602637,
+    "h": 21.6,
+    "site": "4782PV  (Moerdijk)",
+    "register_ids": [
+     "26890"
+    ],
+    "azimuths": [
+     60.0,
+     300.0
+    ],
+    "dist_km_from_survey_point": 11.445,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.680967,
+    "lon": 4.613006,
+    "h": 29.8,
+    "site": "4782SM  (Moerdijk)",
+    "register_ids": [
+     "26936"
+    ],
+    "azimuths": [
+     0.0,
+     120.0,
+     240.0
+    ],
+    "dist_km_from_survey_point": 11.969,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.579029,
+    "lon": 4.454832,
+    "h": 28.7,
+    "site": "4751VK  (Halderberge)",
+    "register_ids": [
+     "19563"
+    ],
+    "azimuths": [
+     10.0,
+     110.0
+    ],
+    "dist_km_from_survey_point": 12.382,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.644152,
+    "lon": 4.606657,
+    "h": 30.3,
+    "site": "4761CE  (Moerdijk)",
+    "register_ids": [
+     "379"
+    ],
+    "azimuths": [
+     50.0,
+     170.0,
+     270.0
+    ],
+    "dist_km_from_survey_point": 12.574,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.62763,
+    "lon": 4.596008,
+    "h": 33.5,
+    "site": "4761PX  (Moerdijk)",
+    "register_ids": [
+     "302"
+    ],
+    "azimuths": [
+     0.0,
+     110.0,
+     230.0
+    ],
+    "dist_km_from_survey_point": 12.802,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2582.5 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.700868,
+    "lon": 4.254997,
+    "h": 33.4,
+    "site": "3258LT  (Oostflakkee)",
+    "register_ids": [
+     "21980"
+    ],
+    "azimuths": [
+     120.0,
+     240.0,
+     350.0
+    ],
+    "dist_km_from_survey_point": 12.808,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.706659,
+    "lon": 4.624271,
+    "h": 35.8,
+    "site": "4781AA  (Moerdijk)",
+    "register_ids": [
+     "36335"
+    ],
+    "azimuths": [
+     100.0,
+     220.0,
+     340.0
+    ],
+    "dist_km_from_survey_point": 12.834,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.611595,
+    "lon": 4.588203,
+    "h": 34.7,
+    "site": "4741RW  (Halderberge)",
+    "register_ids": [
+     "53170"
+    ],
+    "azimuths": [
+     0.0
+    ],
+    "dist_km_from_survey_point": 13.437,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.589123,
+    "lon": 4.330043,
+    "h": 35.0,
+    "site": "4651AB  (Steenbergen)",
+    "register_ids": [
+     "26199"
+    ],
+    "azimuths": [
+     0.0,
+     110.0,
+     200.0
+    ],
+    "dist_km_from_survey_point": 13.542,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.785286,
+    "lon": 4.317275,
+    "h": 28.4,
+    "site": "3265LJ  (Korendijk)",
+    "register_ids": [
+     "7782"
+    ],
+    "azimuths": [
+     220.0
+    ],
+    "dist_km_from_survey_point": 13.553,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.568903,
+    "lon": 4.414565,
+    "h": 31.8,
+    "site": "4756CP  (Steenbergen)",
+    "register_ids": [
+     "20638"
+    ],
+    "azimuths": [
+     260.0
+    ],
+    "dist_km_from_survey_point": 13.579,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.810124,
+    "lon": 4.477247,
+    "h": 25.0,
+    "site": "3274KA  (Binnenmaas)",
+    "register_ids": [
+     "39753"
+    ],
+    "azimuths": [
+     30.0,
+     150.0,
+     260.0
+    ],
+    "dist_km_from_survey_point": 13.601,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.585122,
+    "lon": 4.542106,
+    "h": 42.1,
+    "site": "4731AE  (Halderberge)",
+    "register_ids": [
+     "19791"
+    ],
+    "azimuths": [
+     20.0,
+     140.0,
+     240.0
+    ],
+    "dist_km_from_survey_point": 13.625,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.728001,
+    "lon": 4.628788,
+    "h": 24.8,
+    "site": "3316EJ  (Dordrecht)",
+    "register_ids": [
+     "22005"
+    ],
+    "azimuths": [
+     20.0,
+     150.0,
+     270.0
+    ],
+    "dist_km_from_survey_point": 13.677,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.757556,
+    "lon": 4.613605,
+    "h": 45.8,
+    "site": "3295KJ  (Binnenmaas)",
+    "register_ids": [
+     "9436"
+    ],
+    "azimuths": [
+     50.0,
+     170.0,
+     320.0
+    ],
+    "dist_km_from_survey_point": 14.122,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.585558,
+    "lon": 4.316591,
+    "h": 27.5,
+    "site": "4651DD  (Steenbergen)",
+    "register_ids": [
+     "1644"
+    ],
+    "azimuths": [
+     40.0,
+     185.0,
+     300.0
+    ],
+    "dist_km_from_survey_point": 14.402,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.821187,
+    "lon": 4.43509,
+    "h": 16.0,
+    "site": "3261PC  (Oud-Beijerland)",
+    "register_ids": [
+     "26802"
+    ],
+    "azimuths": [
+     190.0
+    ],
+    "dist_km_from_survey_point": 14.591,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.820198,
+    "lon": 4.406609,
+    "h": 15.9,
+    "site": "3262EB  (Oud-Beijerland)",
+    "register_ids": [
+     "26799"
+    ],
+    "azimuths": [
+     0.0,
+     240.0
+    ],
+    "dist_km_from_survey_point": 14.659,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.744963,
+    "lon": 4.637235,
+    "h": 34.5,
+    "site": "3329KT  (Dordrecht)",
+    "register_ids": [
+     "9410"
+    ],
+    "azimuths": [
+     30.0,
+     190.0,
+     290.0
+    ],
+    "dist_km_from_survey_point": 14.899,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   },
+   {
+    "lat": 51.555729,
+    "lon": 4.460458,
+    "h": 26.7,
+    "site": "4704RK  (Roosendaal)",
+    "register_ids": [
+     "19604"
+    ],
+    "azimuths": [
+     20.0,
+     130.0,
+     250.0
+    ],
+    "dist_km_from_survey_point": 14.997,
+    "other_freqs": [
+     "5G NR 2140 MHz",
+     "5G NR 3600 MHz",
+     "5G NR 783 MHz",
+     "LTE 1487 MHz",
+     "LTE 1850 MHz",
+     "LTE 1865 MHz",
+     "LTE 2675 MHz",
+     "LTE 796 MHz",
+     "LTE 950 MHz",
+     "UMTS 957.4 MHz"
+    ]
+   }
+  ],
+  "VodafoneZiggo": [
+   {
+    "lat": 51.729282,
+    "lon": 4.42934,
+    "h": 26.3,
+    "site": "3281BR Numansdorp (Cromstrijen)",
+    "register_ids": [
+     "16628"
+    ],
+    "azimuths": [
+     50.0,
+     170.0,
+     290.0
+    ],
+    "dist_km_from_survey_point": 4.429,
+    "other_freqs": [
+     "5G NR 1835 MHz",
+     "5G NR 3500 MHz",
+     "5G NR 763 MHz",
+     "GSM 900 925-934.8 MHz",
+     "LTE 1835 MHz",
+     "LTE 2120 MHz",
+     "LTE 2644.4 MHz",
+     "LTE 806 MHz"
+    ]
+   },
+   {
+    "lat": 51.638437,
+    "lon": 4.452411,
+    "h": 34.3,
+    "site": "4793RB Fijnaart en Heijningen (Moerdijk)",
+    "register_ids": [
+     "11168"
+    ],
+    "azimuths": [
+     60.0,
+     180.0,
+     300.0
+    ],
+    "dist_km_from_survey_point": 5.797,
+    "other_freqs": [
+     "5G NR 1835 MHz",
+     "5G NR 3500 MHz",
+     "5G NR 763 MHz",
+     "GSM 900 925-934.8 MHz",
+     "LTE 2120 MHz",
+     "LTE 806 MHz"
+    ]
+   },
+   {
+    "lat": 51.671456,
+    "lon": 4.53889,
+    "h": 35.8,
+    "site": "4791GB Klundert (Moerdijk)",
+    "register_ids": [
+     "24110"
+    ],
+    "azimuths": [
+     90.0,
+     210.0,
+     330.0
+    ],
+    "dist_km_from_survey_point": 7.123,
+    "other_freqs": [
+     "5G NR 1835 MHz",
+     "5G NR 3500 MHz",
+     "5G NR 763 MHz",
+     "GSM 900 925-934.8 MHz",
+     "LTE 2120 MHz",
+     "LTE 806 MHz"
+    ]
+   },
+   {
+    "lat": 51.768506,
+    "lon": 4.447748,
+    "h": 30.3,
+    "site": "3286AR Klaaswaal (Cromstrijen)",
+    "register_ids": [
+     "19153"
+    ],
+    "azimuths": [
+     60.0,
+     180.0,
+     300.0
+    ],
+    "dist_km_from_survey_point": 8.746,
+    "other_freqs": [
+     "5G NR 1835 MHz",
+     "5G NR 3500 MHz",
+     "5G NR 763 MHz",
+     "GSM 900 925-934.8 MHz",
+     "LTE 1459.5 MHz",
+     "LTE 1835 MHz",
+     "LTE 2120 MHz",
+     "LTE 806 MHz"
+    ]
+   },
+   {
+    "lat": 51.661592,
+    "lon": 4.559815,
+    "h": 31.3,
+    "site": "4791RM Klundert (Moerdijk)",
+    "register_ids": [
+     "10716"
+    ],
+    "azimuths": [
+     45.0,
+     165.0,
+     285.0
+    ],
+    "dist_km_from_survey_point": 8.845,
+    "other_freqs": [
+     "5G NR 1835 MHz",
+     "5G NR 3500 MHz",
+     "5G NR 763 MHz",
+     "GSM 900 925-934.8 MHz",
+     "LTE 1459.5 MHz",
+     "LTE 2120 MHz",
+     "LTE 806 MHz"
+    ]
+   },
+   {
+    "lat": 51.649529,
+    "lon": 4.585742,
+    "h": 29.8,
+    "site": "4761PZ Zevenbergen (Moerdijk)",
+    "register_ids": [
+     "52456"
+    ],
+    "azimuths": [
+     90.0,
+     180.0,
+     300.0
+    ],
+    "dist_km_from_survey_point": 11.012,
+    "other_freqs": [
+     "5G NR 1835 MHz",
+     "5G NR 3500 MHz",
+     "5G NR 763 MHz",
+     "GSM 900 925-934.8 MHz",
+     "LTE 1459.5 MHz",
+     "LTE 2120 MHz",
+     "LTE 806 MHz"
+    ]
+   },
+   {
+    "lat": 51.690342,
+    "lon": 4.60479,
+    "h": 30.3,
+    "site": "4782SB Moerdijk (Moerdijk)",
+    "register_ids": [
+     "29564"
+    ],
+    "azimuths": [
+     60.0,
+     180.0,
+     300.0
+    ],
+    "dist_km_from_survey_point": 11.359,
+    "other_freqs": [
+     "5G NR 1835 MHz",
+     "5G NR 3500 MHz",
+     "5G NR 763 MHz",
+     "GSM 900 925-934.8 MHz",
+     "LTE 1459.5 MHz",
+     "LTE 1835 MHz",
+     "LTE 2120 MHz",
+     "LTE 806 MHz"
+    ]
+   },
+   {
+    "lat": 51.669428,
+    "lon": 4.602621,
+    "h": 25.7,
+    "site": "4782PV Moerdijk (Moerdijk)",
+    "register_ids": [
+     "24106"
+    ],
+    "azimuths": [
+     60.0,
+     180.0,
+     300.0
+    ],
+    "dist_km_from_survey_point": 11.443,
+    "other_freqs": [
+     "5G NR 1835 MHz",
+     "5G NR 3500 MHz",
+     "5G NR 763 MHz",
+     "GSM 900 925-934.8 MHz",
+     "LTE 1835 MHz",
+     "LTE 2120 MHz",
+     "LTE 2644.4 MHz",
+     "LTE 806 MHz"
+    ]
+   },
+   {
+    "lat": 51.644525,
+    "lon": 4.608673,
+    "h": 29.7,
+    "site": "4761BT Zevenbergen (Moerdijk)",
+    "register_ids": [
+     "11181"
+    ],
+    "azimuths": [
+     90.0,
+     230.0,
+     340.0
+    ],
+    "dist_km_from_survey_point": 12.684,
+    "other_freqs": [
+     "5G NR 1835 MHz",
+     "5G NR 3500 MHz",
+     "5G NR 763 MHz",
+     "GSM 900 925-934.8 MHz",
+     "LTE 1459.5 MHz",
+     "LTE 2120 MHz",
+     "LTE 806 MHz"
+    ]
+   },
+   {
+    "lat": 51.611604,
+    "lon": 4.588232,
+    "h": 39.2,
+    "site": "4741RW Hoeven (Halderberge)",
+    "register_ids": [
+     "43440"
+    ],
+    "azimuths": [
+     70.0,
+     190.0,
+     310.0
+    ],
+    "dist_km_from_survey_point": 13.438,
+    "other_freqs": [
+     "5G NR 1835 MHz",
+     "5G NR 3500 MHz",
+     "5G NR 763 MHz",
+     "GSM 900 925-934.8 MHz",
+     "LTE 1459.5 MHz",
+     "LTE 2120 MHz",
+     "LTE 806 MHz"
+    ]
+   },
+   {
+    "lat": 51.585032,
+    "lon": 4.542021,
+    "h": 47.5,
+    "site": "4731AE Oudenbosch (Halderberge)",
+    "register_ids": [
+     "5528"
+    ],
+    "azimuths": [
+     30.0,
+     150.0,
+     270.0
+    ],
+    "dist_km_from_survey_point": 13.631,
+    "other_freqs": [
+     "5G NR 1835 MHz",
+     "5G NR 3500 MHz",
+     "5G NR 763 MHz",
+     "GSM 900 925-934.8 MHz",
+     "LTE 1459.5 MHz",
+     "LTE 2120 MHz",
+     "LTE 806 MHz"
+    ]
+   },
+   {
+    "lat": 51.727992,
+    "lon": 4.628789,
+    "h": 36.8,
+    "site": "3316EJ Dordrecht (Dordrecht)",
+    "register_ids": [
+     "16620"
+    ],
+    "azimuths": [
+     25.0,
+     155.0,
+     265.0
+    ],
+    "dist_km_from_survey_point": 13.677,
+    "other_freqs": [
+     "5G NR 1835 MHz",
+     "5G NR 3500 MHz",
+     "5G NR 763 MHz",
+     "GSM 900 925-934.8 MHz",
+     "LTE 1459.5 MHz",
+     "LTE 1835 MHz",
+     "LTE 2120 MHz",
+     "LTE 806 MHz"
+    ]
+   },
+   {
+    "lat": 51.692805,
+    "lon": 4.643495,
+    "h": 36.8,
+    "site": "4781PA Moerdijk (Moerdijk)",
+    "register_ids": [
+     "52401"
+    ],
+    "azimuths": [
+     20.0,
+     120.0,
+     240.0
+    ],
+    "dist_km_from_survey_point": 14.03,
+    "other_freqs": [
+     "5G NR 1835 MHz",
+     "5G NR 3500 MHz",
+     "5G NR 763 MHz",
+     "GSM 900 925-934.8 MHz",
+     "LTE 1835 MHz",
+     "LTE 2120 MHz",
+     "LTE 2644.4 MHz",
+     "LTE 806 MHz"
+    ]
+   },
+   {
+    "lat": 51.583641,
+    "lon": 4.324226,
+    "h": 36.8,
+    "site": "4651DX Steenbergen (Steenbergen)",
+    "register_ids": [
+     "5463"
+    ],
+    "azimuths": [
+     0.0,
+     120.0,
+     240.0
+    ],
+    "dist_km_from_survey_point": 14.273,
+    "other_freqs": [
+     "5G NR 1835 MHz",
+     "5G NR 3500 MHz",
+     "5G NR 763 MHz",
+     "GSM 900 925-934.8 MHz",
+     "LTE 2120 MHz",
+     "LTE 806 MHz"
+    ]
+   },
+   {
+    "lat": 51.55971,
+    "lon": 4.471626,
+    "h": 36.0,
+    "site": "4704RV Roosendaal (Roosendaal)",
+    "register_ids": [
+     "52438"
+    ],
+    "azimuths": [
+     60.0,
+     190.0,
+     300.0
+    ],
+    "dist_km_from_survey_point": 14.651,
+    "other_freqs": [
+     "5G NR 1835 MHz",
+     "5G NR 3500 MHz",
+     "5G NR 763 MHz",
+     "GSM 900 925-934.8 MHz",
+     "LTE 1459.5 MHz",
+     "LTE 2120 MHz",
+     "LTE 806 MHz"
+    ]
+   },
+   {
+    "lat": 51.590442,
+    "lon": 4.300313,
+    "h": 36.8,
+    "site": "4651SP Steenbergen (Steenbergen)",
+    "register_ids": [
+     "17943"
+    ],
+    "azimuths": [
+     20.0,
+     110.0,
+     240.0
+    ],
+    "dist_km_from_survey_point": 14.679,
+    "other_freqs": [
+     "5G NR 1835 MHz",
+     "5G NR 3500 MHz",
+     "5G NR 763 MHz",
+     "GSM 900 925-934.8 MHz",
+     "LTE 2120 MHz",
+     "LTE 806 MHz"
+    ]
+   }
+  ]
+ }
+}

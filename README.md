@@ -52,8 +52,12 @@ bookmarks, a **Record** button (WAV) and per-transmission recordings in scanner 
 tab that plots ADS-B aircraft, AIS ships, APRS stations and radiosondes from the decoders, and a
 **"Where am I?"** panel that estimates the receiver's own position from what it hears: one estimate per
 opt-in source with its own accuracy circle (ADS-B, AIS, APRS and sondes locally from reception range;
-P2000 and GSM country code at country level; GSM cell IDs through the open beaconDB service, the only
-source that contacts a server), plus an inverse-variance fused estimate. The header shows the
+P2000 and GSM country code at country level; GSM cell IDs against an **offline cell database** bundled in
+`web/cells/` (Mozilla Location Service final export, CC0; within 0.5 km at the test site) or through the open
+beaconDB service, the only source that contacts a server), plus an inverse-variance fused estimate and a paste
+box for estimates from the native tools: `rfscan.cellpos` (same cell lookup), `rfscan.tdoa_dab` (DAB
+single-frequency-network TII time differences) and `rfscan.tdoa_nr` (5G SSB frame timing); see
+`docs/notes-*.md` for how far each of those got. The header shows the
 HackRF Pro extras: bias tee and CLKOUT. The **Satellites** tab predicts passes from bundled orbital
 elements (`web/tle.txt`, refreshed daily by a workflow; satellite.js) for the ISS APRS digipeater and
 FM repeater, SO-50, AO-91, RS-44, Meteor-M2 LRPT and ORBCOMM, and **Track** tunes the receiver to the

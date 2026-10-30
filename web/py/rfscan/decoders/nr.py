@@ -187,6 +187,17 @@ def _cfo(y, num, nid2, occ):
 
 
 def _sss(y, num, nid2, occ):
+    r = _sss_scores(y, num, nid2, occ)
+    if r is None:
+        return None
+    tot, n = r
+    i = int(np.argmax(tot))
+    o = np.delete(tot, i)
+    return float((tot[i] - o.mean()) / (o.std() + 1e-20)), i, n
+
+
+def _sss_scores(y, num, nid2, occ):
+    """Accumulated SSS correlation score for all 336 N_ID1 hypotheses (and the number of occurrences used)."""
     tab = sss_table(nid2)
     b = _bins(num.nfft)
     d = pss_seq(nid2)
@@ -205,9 +216,7 @@ def _sss(y, num, nid2, occ):
         n += 1
     if n == 0:
         return None
-    i = int(np.argmax(tot))
-    o = np.delete(tot, i)
-    return float((tot[i] - o.mean()) / (o.std() + 1e-20)), i, n
+    return tot, n
 
 
 # ---------------------------------------------------------------- PBCH DMRS -> SSB index
@@ -253,6 +262,248 @@ def _ssb_index(yw, numw, pci, p_wide):
     return i, float(scores[i] / (o.mean() + 1e-20))
 
 
+# ---------------------------------------------------------------- SSB timing (for TDOA, see rfscan/tdoa_nr.py)
+HALF_FRAME_S = 5e-3
+
+
+def ssb_case(scs, fc_hz=None):
+    """SSB pattern case (TS 38.213 4.1) for the SCS used in NL/CEPT bands."""
+    if scs >= 30e3:
+        return "C"          # n77/n78 (case B is only used in n5/n66)
+    return "A"
+
+
+def ssb_start_symbols(case="C", fc_hz=3.5e9):
+    """First OFDM symbol (index within the half-frame) of every SSB candidate, TS 38.213 4.1.
+    Cases A and C: {2, 8} + 14 n, n = 0, 1 at or below 3 GHz and n = 0..3 above (L_max 4 / 8).
+    Case B: {4, 8, 16, 20} + 28 n, n = 0 / n = 0, 1."""
+    big = fc_hz > 3e9
+    if case == "B":
+        return [b + 28 * n for n in range(2 if big else 1) for b in (4, 8, 16, 20)]
+    return [b + 14 * n for n in range(4 if big else 2) for b in (2, 8)]
+
+
+def symbol_useful_start_s(sym, scs=30e3):
+    """Time from the half-frame start to the start of the useful part (after the CP) of OFDM symbol `sym`
+    (index within the half-frame), normal CP.  TS 38.211 5.3.1: N_CP = 144k*2^-mu, plus 16k on the first
+    symbol of every 0.5 ms (symbol 0 and 7*2^mu)."""
+    mu = int(round(np.log2(scs / 15e3)))
+    tc = 1.0 / (480e3 * 4096)
+    kappa = 64
+    n_u = 2048 * kappa * 2.0 ** -mu
+    n_cp = 144 * kappa * 2.0 ** -mu
+    per_half_ms = 7 * 2 ** mu
+    t = 0.0
+    for l in range(sym + 1):
+        cp = n_cp + (16 * kappa if l % per_half_ms == 0 else 0)
+        t += cp
+        if l < sym:
+            t += n_u
+    return t * tc
+
+
+def ssb_offset_s(issb, scs=30e3, case=None, fc_hz=3.5e9):
+    """Time from the half-frame start to the useful part of the PSS of SSB candidate `issb`."""
+    syms = ssb_start_symbols(case or ssb_case(scs), fc_hz)
+    return symbol_useful_start_s(syms[issb], scs)
+
+
+def _corr_mag2(y, tmpl, p):
+    n = len(tmpl)
+    if p < 0 or p + n > len(y):
+        return 0.0
+    return abs(np.vdot(tmpl, y[p:p + n])) ** 2
+
+
+def _sss_time(num, pci):
+    nid1, nid2 = divmod(pci, 3)
+    X = np.zeros(num.nfft, np.complex64)
+    X[_bins(num.nfft)] = sss_seq(nid1, nid2)
+    return sfft.ifft(X).astype(np.complex64)
+
+
+def fine_delay(Hs, ks, nfft, span=3.0, step=1 / 32):
+    """Delay (samples, relative to the FFT window start) maximising the power-summed delay profile
+    |sum_k H_k exp(j 2 pi k tau / nfft)|^2 of one or more channel estimates H (on subcarriers ks)."""
+    tau = np.arange(-span, span + step / 2, step)
+    E = np.exp(2j * np.pi * np.outer(ks, tau) / nfft)
+    prof = np.zeros(len(tau))
+    for H in Hs:
+        prof += np.abs(np.asarray(H) @ E) ** 2
+    i = int(np.argmax(prof))
+    if 0 < i < len(tau) - 1:
+        a, b, c = prof[i - 1], prof[i], prof[i + 1]
+        den = a - 2 * b + c
+        fr = 0.5 * (a - c) / den if den < 0 else 0.0
+        return float(tau[i] + fr * step)
+    return float(tau[i])
+
+
+def refine_occurrence(y, num, p, pci, use_pss=True, search=2):
+    """Sub-sample PSS/SSS timing of one SSB whose PSS useful part starts near integer sample p.
+
+    Returns (t_parabola, t_freq, snr) in samples of y: the parabolic interpolation of the
+    PSS(+SSS) correlation peak and the frequency-domain estimate (delay maximising the channel
+    delay profile over the 127 PSS/SSS subcarriers, i.e. the phase slope fitted across the whole band).  use_pss=False uses the SSS only (to separate co-channel
+    cells that share N_ID2 and hence the PSS)."""
+    nid1, nid2 = divmod(pci, 3)
+    off = 2 * num.sym
+    ts = _sss_time(num, pci)
+    tp = num.tmpl[nid2]
+
+    def c(q):
+        v = _corr_mag2(y, ts, q + off)
+        if use_pss:
+            v += _corr_mag2(y, tp, q)
+        return v
+    # integer peak within +-2
+    vals = {q: c(q) for q in range(p - search, p + search + 1)}
+    q0 = max(vals, key=vals.get)
+    a, b, cc = c(q0 - 1), vals[q0], c(q0 + 1)
+    den = a - 2 * b + cc
+    frac = 0.5 * (a - cc) / den if den < 0 else 0.0
+    t_par = q0 + float(np.clip(frac, -0.5, 0.5))
+    # frequency-domain delay around q0 (window starting at q0): maximise |sum_k H_k e^{j 2 pi k tau / N}|
+    # over a fine tau grid (ML delay of the dominant path over the full 3.8 MHz PSS/SSS bandwidth)
+    bins = _bins(num.nfft)
+    ks = np.arange(127) - 64
+    Hs, sig, tot = [], 0.0, 0.0
+    parts = [(off, sss_seq(nid1, nid2))]
+    if use_pss:
+        parts.append((0, pss_seq(nid2)))
+    for o, seq in parts:
+        s0 = q0 + o
+        if s0 < 0 or s0 + num.nfft > len(y):
+            continue
+        Y = sfft.fft(y[s0:s0 + num.nfft])
+        H = Y[bins] * seq
+        Hs.append(H)
+        sig += abs(np.sum(H)) ** 2 / len(H)
+        tot += float(np.sum(np.abs(Y) ** 2))
+    t_slope = q0 + fine_delay(Hs, ks, num.nfft) if Hs else t_par
+    snr = sig / max(tot - sig, 1e-20) * num.nfft / 127
+    return t_par, t_slope, float(snr)
+
+
+def _period_ms(times, idx):
+    """SSB periodicity (ms) from the spacing of occurrences of the same SSB index."""
+    d = []
+    by = {}
+    for t, i in zip(times, idx):
+        by.setdefault(i, []).append(t)
+    for v in by.values():
+        v = np.sort(v)
+        d += list(np.diff(v))
+    if not d:
+        return None
+    m = float(np.median(d)) * 1e3
+    for p in (5, 10, 20, 40, 80, 160):
+        if abs(m - p) < 1.0:
+            return p
+    return round(m, 2)
+
+
+def ssb_timing(y, num, pci, occ, idx, fs=FS, scs=30e3, fc_hz=3.5e9, use_pss=True, method="slope", search=2):
+    """Per-occurrence SSB arrival times and implied half-frame start times for one cell.
+
+    y: channelised baseband (rate fs) centred on SS_REF; occ: integer PSS starts; idx: SSB index per
+    occurrence (None where PBCH DMRS was inconclusive).  The SSB index fixes the SSB position within the
+    half-frame (case C: symbols {2, 8} + 14 n); the half-frame bit is in the PBCH payload (MIB not
+    decoded), so frame starts are only known modulo 5 ms (`frame_start_mod_s` is modulo 5 ms).
+    Returns a dict with lists t_pss_s, t_hf_s (half-frame start = PSS time - SSB offset), issb, snr, plus
+    a linear fit (drift of the receiver sample clock) and its residual std."""
+    case = ssb_case(scs)
+    nc = len(ssb_start_symbols(case, fc_hz))
+    offs = [ssb_offset_s(i, scs, case, fc_hz) for i in range(nc)]
+    t_pss, snrs, t_par = [], [], []
+    for p in occ:
+        tp, tsl, snr = refine_occurrence(y, num, p, pci, use_pss, search)
+        t_pss.append((tsl if method == "slope" else tp) / fs)
+        t_par.append(tp / fs)
+        snrs.append(snr)
+    t_pss = np.array(t_pss)
+    idx = list(idx)
+    known = [(t, i) for t, i in zip(t_pss, idx) if i is not None and i < nc]
+    ambiguous = False
+    if known:
+        ref = np.array([t - offs[i] for t, i in known])
+        # circular median modulo 5 ms
+        ph = np.angle(np.mean(np.exp(2j * np.pi * ref / HALF_FRAME_S))) / (2 * np.pi) * HALF_FRAME_S
+    else:
+        ph = None
+        ambiguous = True
+    out_idx = []
+    for k, (t, i) in enumerate(zip(t_pss, idx)):
+        if i is None or i >= nc:
+            if ph is None:
+                i = 0     # unresolved: assume the first candidate (flagged)
+            else:   # choose the candidate whose half-frame start matches the cell's other SSBs
+                err = [abs(((t - offs[j] - ph + HALF_FRAME_S / 2) % HALF_FRAME_S) - HALF_FRAME_S / 2) for j in range(nc)]
+                i = int(np.argmin(err))
+        out_idx.append(int(i))
+    t_hf = np.array([t - offs[i] for t, i in zip(t_pss, out_idx)])
+    hf = np.round((t_hf - t_hf[0]) / HALF_FRAME_S).astype(int) if len(t_hf) else np.array([], int)
+    res = dict(pci=int(pci), n=int(len(occ)), issb=out_idx, issb_from_dmrs=[i is not None for i in idx],
+               t_pss_s=[float(v) for v in t_pss], t_pss_parabola_s=[float(v) for v in t_par],
+               t_hf_s=[float(v) for v in t_hf], half_frame=[int(v) for v in hf], snr=[float(v) for v in snrs],
+               index_ambiguous=ambiguous, period_ms=_period_ms(t_pss, out_idx), method=method)
+    if len(t_hf) >= 3 and hf[-1] != hf[0]:
+        A = np.vstack([np.ones(len(hf)), hf * HALF_FRAME_S]).T
+        coef, *_ = np.linalg.lstsq(A, t_hf, rcond=None)
+        r = t_hf - A @ coef
+        res.update(fit_t0_s=float(coef[0]), drift_ppm=float((coef[1] - 1) * 1e6), resid_std_s=float(np.std(r)))
+    elif len(t_hf):
+        res.update(fit_t0_s=float(t_hf[0]), drift_ppm=0.0, resid_std_s=float(np.std(t_hf - t_hf[0] - hf * HALF_FRAME_S)))
+    if len(t_hf):
+        res["frame_start_mod_s"] = float(res["fit_t0_s"] % HALF_FRAME_S)
+    return res
+
+
+def cancel_cell(y, num, pci, occ, smooth=9):
+    """Copy of y with the PSS and SSS (incl. CP) of cell `pci` at PSS starts `occ` subtracted.
+
+    The channel is estimated per occurrence on the PSS and smoothed over `smooth` subcarriers (this
+    suppresses the contribution of other, co-timed cells' PSS to the estimate), then the cell's PSS and
+    SSS are re-synthesised and removed.  Synchronised cells transmit their SSBs at the same time, so
+    weaker cells' SSS can only be detected after the strongest ones are cancelled."""
+    y = np.array(y, np.complex64, copy=True)
+    nid1, nid2 = divmod(pci, 3)
+    b = _bins(num.nfft)
+    d = pss_seq(nid2)
+    sq = sss_seq(nid1, nid2)
+    off = 2 * num.sym
+    k = np.ones(smooth) / smooth
+    for p in sorted(set(int(v) for v in occ)):
+        if p - num.cp < 0 or p + off + num.nfft > len(y):
+            continue
+        H = sfft.fft(y[p:p + num.nfft])[b] * d
+        Hp = np.convolve(np.pad(H, smooth // 2, mode="edge"), k, mode="valid")
+        S = sfft.fft(y[p + off:p + off + num.nfft])[b] * sq
+        Hs = np.convolve(np.pad(S, smooth // 2, mode="edge"), k, mode="valid")
+        for o, seq, Hh in ((0, d, Hp), (off, sq, Hs)):
+            X = np.zeros(num.nfft, np.complex64)
+            X[b] = Hh * seq
+            t = sfft.ifft(X)
+            y[p + o - num.cp:p + o + num.nfft] -= np.concatenate([t[-num.cp:], t])
+    return y
+
+
+def _secondary_nid1(tot, primary, z_thr, max_n=3):
+    """Further N_ID1 hypotheses with a significant SSS score (co-channel cells sharing N_ID2)."""
+    out = []
+    excl = [primary]
+    for _ in range(max_n):
+        o = np.delete(tot, excl)
+        mu, sd = o.mean(), o.std() + 1e-20
+        cand = [i for i in np.argsort(-tot) if i not in excl][0]
+        z = (tot[cand] - mu) / sd
+        if z < z_thr:
+            break
+        out.append((int(cand), float(z)))
+        excl.append(int(cand))
+    return out
+
+
 # ---------------------------------------------------------------- entry
 def decode(rec, ctx=None):
     ctx = ctx or {}
@@ -263,9 +514,10 @@ def decode(rec, ctx=None):
     scs = float(ctx.get("scs", 30e3 if fc >= 3000e6 else 15e3))
     num = _Num(scs)
     n_total = rec.n_samples()
-    x_det = rec.iq(0, min(n_total, int(DET_SECONDS * fs)))
+    x_det = rec.iq(0, min(n_total, int(float(ctx.get("det_seconds", DET_SECONDS)) * fs)))
     ch = Channelizer(x_det, fs, (FS,))
-    half_bw = USABLE * fs / 2 - 127 * scs / 2 - 0.1e6
+    half_bw = float(ctx.get("usable", USABLE)) * fs / 2 - 127 * scs / 2 - 0.1e6
+    timing = bool(ctx.get("timing"))
     ppm = float(ctx.get("ppm_max", 10.0))
 
     def raster_cands(step):
@@ -310,6 +562,7 @@ def decode(rec, ctx=None):
             groups[key] = []
         groups[key].append((rho, t0))
     found = {}
+    cancel = []          # timing mode: cells found so far (f_ref, pci, occ) for SSS interference cancellation
     for (nid2, foff), lst in groups.items():
         y = chf.get(foff, FS)
         occ = _occ(y, num, nid2, [t for _, t in lst])
@@ -317,6 +570,10 @@ def decode(rec, ctx=None):
             continue
         dcfo = _cfo(y, num, nid2, occ) if len(occ) else 0.0
         y = chf.get(foff + dcfo, FS)
+        if timing:
+            for f_c, pci_c, occ_c in cancel:
+                if abs(f_c - (fc + foff + dcfo)) < 0.5e6:
+                    y = cancel_cell(y, num, pci_c, occ_c)
         occ = _occ(y, num, nid2, sorted(set(occ)))
         s = _sss(y, num, nid2, occ)
         if s is None or s[0] < SSS_Z:
@@ -331,6 +588,7 @@ def decode(rec, ctx=None):
         # SSB index per occurrence (stretch)
         yw = chf.get(foff + dcfo, FS_WIDE)
         beams = {}
+        occ_idx = []
         for p in occ:
             pw = int(round(p * FS_WIDE / FS))
             best, bp = -1, pw
@@ -345,6 +603,7 @@ def decode(rec, ctx=None):
             if i is not None and ratio > 1.8:
                 beams.setdefault(i, 0)
                 beams[i] += 1
+            occ_idx.append(i if (i is not None and ratio > 1.8) else None)
         pwr = float(np.mean([np.mean(np.abs(y[p:p + num.nfft]) ** 2) for p in occ]))
         ppm_if_raster = (f_ref - f_g) / f_g * 1e6
         fields = dict(pci=pci, nid1=nid1, nid2=nid2, ss_ref_hz=float(f_ref), scs_khz=scs / 1e3,
@@ -352,6 +611,21 @@ def decode(rec, ctx=None):
                       ppm_if_on_raster=float(ppm_if_raster), nr_arfcn_ssb=nr_arfcn(f_ref), band=nr_band(f_ref),
                       sss_z=float(z), pss_rho=float(max(r for r, _ in lst)), occurrences=int(n_used),
                       ssb_indices=sorted(beams), pss_power_dbfs=float(10 * np.log10(pwr + 1e-20)))
+        if timing:
+            # opt-in (ctx["timing"]): sub-sample SSB arrival / half-frame start times for TDOA
+            uo = {}
+            for p_, i_ in zip(occ, occ_idx):
+                uo.setdefault(p_, i_)
+            uo = dict(sorted(uo.items()))
+            fields["timing"] = ssb_timing(y, num, pci, list(uo), list(uo.values()), FS, scs, f_ref)
+            cancel.append((f_ref, pci, list(uo)))
+            tot, _ = _sss_scores(y, num, nid2, occ)
+            sec = []
+            for n1, z2 in _secondary_nid1(tot, nid1, SSS_Z):
+                tm = ssb_timing(y, num, 3 * n1 + nid2, list(uo), list(uo.values()), FS, scs, f_ref, use_pss=False, search=8)
+                tm["sss_z"] = z2
+                sec.append(tm)
+            fields["co_channel"] = sec
         bstr = f" SSB idx {sorted(beams)}" if beams else ""
         label = (f"5G NR {nr_band(f_ref)} SSB {f_ref/1e6:.3f} MHz (GSCN {g}{'' if abs(ppm_if_raster) < 12 else ' off-raster'}) "
                  f"PCI {pci} SCS {scs/1e3:g} kHz{bstr} (PSS+SSS)")

@@ -1,4 +1,7 @@
-# Findings: what is on the air here (Antwerp area, BE/NL border)
+# Findings: what is on the air here (Willemstad, Noord-Brabant, NL)
+
+> Correction 2026-10-30: earlier text assumed the Antwerp area. The receiver is in Willemstad (≈51.69N 4.44E),
+> 25 km north of the Belgian border, which is why Dutch cells dominate and Belgian DAB/FM is also heard.
 
 Running log of what rfscan has identified off air, native and in the browser. Dates are run dates;
 details live in `runs/<date>/report.html` (git-ignored) and the per-day reports in `docs/`.

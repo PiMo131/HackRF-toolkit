@@ -184,7 +184,7 @@ td button{padding:1px 8px;font-size:12px}
     <label class="chk"><input id="aRecTx" type="checkbox">Record each scanner transmission</label>
     <span id="vList" class="note"></span>
   </div>
-  <div id="aOptin" class="note" style="display:none;margin-bottom:8px"><label class="chk"><input id="aOptinChk" type="checkbox">I understand that in Belgium listening to aviation, maritime and emergency-service frequencies without the parties' consent is not permitted (BIPT); these presets are my own choice.</label></div>
+  <div id="aOptin" class="note" style="display:none;margin-bottom:8px"><label class="chk"><input id="aOptinChk" type="checkbox">I understand that listening to aviation, maritime and emergency-service frequencies is legal in the Netherlands but passing on what is heard is not, and that in Belgium (BIPT) listening itself is not permitted; these presets are my own choice.</label></div>
   <div class="readout" id="aRead">Listen plays the demodulated audio in the browser. FM broadcast gives stereo and RDS; "Find stations" sweeps the band.</div>
   <div id="aRds" class="readout" style="font-size:15px"></div>
   <div id="aStations" class="row"></div>
@@ -221,6 +221,7 @@ td button{padding:1px 8px;font-size:12px}
     <summary><b>Where am I?</b> <span class="note">estimate the receiver position from what it hears; every source is opt-in and has its own accuracy</span></summary>
     <div class="row" style="margin-top:8px">
       <label class="chk"><input class="whereSrc" data-src="cells" type="checkbox"><span style="color:#ff6b6b">●</span> GSM cells via beaconDB <span class="note">(sends the decoded MCC/MNC/LAC/CI to api.beacondb.net)</span></label>
+      <label class="chk"><input class="whereSrc" data-src="celldb" type="checkbox" checked><span style="color:#ff9e9e">●</span> cell DB (offline) <span class="note">(GSM MCC/MNC/LAC/CI looked up in cells/&lt;mcc&gt;.csv.gz, no server call)</span></label>
       <label class="chk"><input class="whereSrc" data-src="adsb" type="checkbox" checked><span style="color:#ffb380">●</span> ADS-B aircraft (local)</label>
       <label class="chk"><input class="whereSrc" data-src="ais" type="checkbox" checked><span style="color:#6fb3ff">●</span> AIS ships (local)</label>
       <label class="chk"><input class="whereSrc" data-src="aprs" type="checkbox" checked><span style="color:#7ee787">●</span> APRS heard direct (local)</label>
@@ -231,6 +232,7 @@ td button{padding:1px 8px;font-size:12px}
       <button id="whereRun" class="sec">Estimate</button>
     </div>
     <div class="row"><label>beaconDB answer (paste, when the browser call is blocked or the cells came from the native decoder)<input id="whereCellsJson" type="text" placeholder='{"location":{"lat":..,"lng":..},"accuracy":..}' style="width:420px"></label></div>
+    <div class="row"><label>extra estimates JSON (paste, e.g. the output of <code>python -m rfscan.cellpos runs/&lt;run&gt;/rfscan.sqlite</code>)<input id="whereExtraJson" type="text" placeholder='[{"src":"celldb","lat":..,"lon":..,"acc":..,"n":..,"note":".."}]' style="width:420px"></label></div>
     <div id="whereOut" class="note"></div>
   </details>
   <div id="mapDiv" style="height:560px;border:1px solid #2a303b;border-radius:6px;background:#07090c"></div>
@@ -238,8 +240,8 @@ td button{padding:1px 8px;font-size:12px}
 
 <section id="sat">
   <div class="row">
-    <label>Observer lat<input id="sLat" type="number" step="0.0001" value="51.2200" style="width:100px"></label>
-    <label>lon<input id="sLon" type="number" step="0.0001" value="4.4000" style="width:100px"></label>
+    <label>Observer lat<input id="sLat" type="number" step="0.0001" value="51.6900" style="width:100px"></label>
+    <label>lon<input id="sLon" type="number" step="0.0001" value="4.4400" style="width:100px"></label>
     <button id="sGeo" class="sec" title="ask the browser for your position">Use my location</button>
     <label>Hours ahead<input id="sHours" type="number" min="1" max="72" value="24" style="width:60px"></label>
     <label>Min. elevation °<input id="sMinEl" type="number" min="0" max="60" value="10" style="width:60px"></label>
@@ -1806,7 +1808,7 @@ function mapCollect() {
 function mapShow() {
   if (typeof L === 'undefined') { $('#mapStat').textContent = 'Leaflet did not load (offline?)'; return; }
   if (!leaf) {
-    leaf = L.map('mapDiv', { zoomControl: true }).setView([51.22, 4.40], 9);
+    leaf = L.map('mapDiv', { zoomControl: true }).setView([51.69, 4.44], 9);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap contributors' }).addTo(leaf);
     leafLayer = L.layerGroup().addTo(leaf);
   }
@@ -1832,8 +1834,8 @@ document.querySelectorAll('.mapLayer').forEach(c => c.onchange = mapRender);
 // ---- "Where am I": one position estimate per data source, each with its own accuracy, plus a fused one.
 // Local sources use the fact that a signal was received at all: the receiver lies within a reception radius of every
 // emitter whose position is known, so the estimate is the point that minimises the largest distance to them (minimax
-// centre) with the radius as accuracy. Only the cell-tower source talks to a server (beaconDB, open data).
-const WHERE_COLORS = { cells: '#ff6b6b', adsb: '#ffb380', ais: '#6fb3ff', aprs: '#7ee787', rs41: '#d2a8ff', p2000: '#f0c674', mcc: '#8a93a3', geo: '#fff', fused: '#ff3df2' };
+// centre) with the radius as accuracy. Only the beaconDB source talks to a server (open data); "cell DB (offline)" uses local files.
+const WHERE_COLORS = { cells: '#ff6b6b', celldb: '#ff9e9e', adsb: '#ffb380', ais: '#6fb3ff', aprs: '#7ee787', rs41: '#d2a8ff', p2000: '#f0c674', mcc: '#8a93a3', geo: '#fff', fused: '#ff3df2' };
 const WHERE_RADIUS = { adsb: 300e3, ais: 60e3, aprs: 60e3, rs41: 300e3 };            // typical whip-antenna reception range (m)
 const COUNTRY = { 204: { name: 'Netherlands', lat: 52.2, lon: 5.4, r: 160e3 }, 206: { name: 'Belgium', lat: 50.6, lon: 4.6, r: 130e3 }, 262: { name: 'Germany', lat: 51.1, lon: 10.4, r: 400e3 }, 208: { name: 'France', lat: 46.6, lon: 2.4, r: 500e3 }, 270: { name: 'Luxembourg', lat: 49.8, lon: 6.1, r: 40e3 }, 234: { name: 'United Kingdom', lat: 53.0, lon: -1.5, r: 400e3 } };
 let whereLayer = null;
@@ -1864,6 +1866,53 @@ async function whereCells() {
     const j = await r.json(); return { lat: j.location.lat, lon: j.location.lng, acc: j.accuracy, n: towers.length };
   } catch (e) { return { err: `beaconDB not reachable from the browser (${e.message}); try: curl -X POST https://api.beacondb.net/v1/geolocate -H 'Content-Type: application/json' -d '${JSON.stringify({ cellTowers: towers }).replace(/'/g, '')}'` }; }
 }
+// ---- offline cell DB: cells/<mcc>.csv.gz (radio,net,area,cell,lon,lat,range,samples; made by `python -m rfscan.cellpos
+// convert`), same lookup + weighting as rfscan/cellpos.py. Files load on demand, once per MCC; a missing file is no error.
+const CELLDB = new Map(), CELL_MIN_RANGE = 2000, CELL_MIN_ACC = 3000;   // mcc -> Map('RADIO,net,area,cell' -> [lat, lon, range, samples]) | null
+async function cellDbLoad(mcc) {
+  if (CELLDB.has(mcc)) return CELLDB.get(mcc);
+  let r; try { r = await fetch(`cells/${mcc}.csv.gz`); } catch (e) { return null; }    // network error: retry next time
+  if (!r.ok) { CELLDB.set(mcc, null); return null; }
+  const buf = new Uint8Array(await r.arrayBuffer());                     // a server may already have undone the gzip
+  const txt = buf[0] === 0x1f && buf[1] === 0x8b ? await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text() : new TextDecoder().decode(buf);
+  const db = new Map(), lines = txt.split('\n');
+  for (let i = 1; i < lines.length; i++) { const p = lines[i].split(','); if (p.length >= 8) db.set(`${p[0]},${+p[1]},${+p[2]},${+p[3]}`, [+p[5], +p[4], +p[6] || 0, +p[7] || 0]); }
+  CELLDB.set(mcc, db); return db;
+}
+function cellLacArea(db, net, lac) {                  // CI unknown: centroid of the LAC's GSM cells, 90th-percentile spread as range
+  const pre = `GSM,${net},${lac},`, pts = []; for (const [k, v] of db) if (k.startsWith(pre)) pts.push({ lat: v[0], lon: v[1] });
+  if (!pts.length) return null;
+  const c = { lat: pts.reduce((s, p) => s + p.lat, 0) / pts.length, lon: pts.reduce((s, p) => s + p.lon, 0) / pts.length };
+  const d = pts.map(p => haversine(c, p)).sort((a, b) => a - b);
+  return { ...c, spread: d[Math.floor(0.9 * (d.length - 1))], n: pts.length };
+}
+async function cellDbLookup(cells) {                  // cells: [{mcc,mnc,lac,ci,power_db}] -> { towers, missing }
+  const merged = new Map();
+  for (const c of cells) { if (c.mcc == null || c.lac == null || c.ci == null) continue; const k = `${+c.mcc},${+c.mnc},${+c.lac},${+c.ci}`; if (!merged.has(k)) merged.set(k, []); if (c.power_db != null) merged.get(k).push(+c.power_db); }
+  const towers = [], missing = [];
+  for (const [k, ps] of merged) {
+    const [mcc, mnc, lac, ci] = k.split(',').map(Number), pw = ps.length ? ps.reduce((a, b) => a + b, 0) / ps.length : null;
+    const tag = `${mcc}-${String(mnc).padStart(2, '0')} LAC ${lac} CI ${ci}`, db = await cellDbLoad(mcc);
+    if (!db) { missing.push(`${tag}: no cells/${mcc}.csv.gz`); continue; }
+    const hit = db.get(`GSM,${mnc},${lac},${ci}`);        // UMTS/LTE IDs are another (28-bit) space: no cross-match
+    if (hit) { towers.push({ mcc, mnc, lac, ci, power_db: pw, lat: hit[0], lon: hit[1], range: Math.max(hit[2], CELL_MIN_RANGE), how: 'cell' }); continue; }
+    const la = cellLacArea(db, mnc, lac);
+    if (la) towers.push({ mcc, mnc, lac, ci, power_db: pw, lat: la.lat, lon: la.lon, range: Math.max(la.spread, CELL_MIN_RANGE), how: 'lac' });
+    else missing.push(`${tag}: not in the database`);
+  }
+  return { towers, missing };
+}
+function cellDbEstimate(towers) {                     // weight = amplitude rel. to the strongest / range; acc = weighted RMS of (scatter, range/sqrt2)
+  if (!towers.length) return null;
+  const exact = towers.filter(t => t.how === 'cell'), use = exact.length ? exact : towers, nl = towers.length - exact.length;   // LAC centroids only when no CI is known
+  const known = use.filter(t => t.power_db != null), pmax = known.length ? Math.max(...known.map(t => t.power_db)) : 0;
+  const ws = use.map(t => 10 ** (((t.power_db ?? pmax - 10) - pmax) / 20) / t.range), W = ws.reduce((a, b) => a + b, 0);
+  const lat = use.reduce((s, t, i) => s + ws[i] * t.lat, 0) / W, lon = use.reduce((s, t, i) => s + ws[i] * t.lon, 0) / W;
+  const v = use.reduce((s, t, i) => s + ws[i] * (haversine({ lat, lon }, t) ** 2 + t.range ** 2 / 2), 0) / W;
+  const note = exact.length ? `offline cell DB: ${exact.length} cell${exact.length !== 1 ? 's' : ''} by CI${nl ? ` (${nl} more with unknown CI, LAC only, not used)` : ''}` : `offline cell DB: CI unknown, centroid of ${nl} LAC${nl !== 1 ? 's' : ''}`;
+  return { src: 'celldb', lat, lon, acc: Math.max(CELL_MIN_ACC, Math.sqrt(v)), n: use.length, note };
+}
+// ---- end offline cell DB
 async function whereRun() {
   mapShow(); if (!leaf) return;
   if (!whereLayer) whereLayer = L.layerGroup().addTo(leaf); whereLayer.clearLayers();
@@ -1881,7 +1930,14 @@ async function whereRun() {
     if (pasted) { try { const j = JSON.parse(pasted); est.push({ src: 'cells', lat: j.location.lat, lon: j.location.lng, acc: j.accuracy, note: 'beaconDB answer pasted (cells from the native GSM decoder)' }); } catch (e) { notes.push('cells: pasted text is not a beaconDB answer'); } }
     else { const c = await whereCells(); if (c.err) notes.push('cells: ' + c.err); else est.push({ src: 'cells', ...c, note: `beaconDB from ${c.n} cell${c.n > 1 ? 's' : ''}` }); }
   }
+  if (on.has('celldb')) {
+    const cells = []; for (const e of dec.emitters.values()) { const f = e.d.fields || {}; if (e.d.decoder === 'gsm' && f.mcc && f.lac != null && f.ci != null) cells.push(f); }
+    if (!cells.length) notes.push('cell DB: no GSM cells with LAC/CI decoded yet');
+    else { const { towers, missing } = await cellDbLookup(cells), e = cellDbEstimate(towers); if (e) { if (missing.length) e.note += `; ${missing.length} unknown`; est.push(e); } if (missing.length) notes.push('cell DB: ' + missing.join(', ')); }
+  }
   for (const x of (window.whereExtra || [])) est.push(x);
+  const extra = $('#whereExtraJson').value.trim();   // pasted estimates, e.g. from python -m rfscan.cellpos
+  if (extra) { try { let j = JSON.parse(extra); if (!Array.isArray(j)) j = [j]; for (const x of j) if (isFinite(x.lat) && isFinite(x.lon) && x.acc > 0) est.push({ ...x, src: String(x.src || 'extra'), lat: +x.lat, lon: +x.lon, acc: +x.acc, note: (x.note ? x.note + ' ' : '') + '(pasted)' }); else notes.push('extra: skipped an entry without lat/lon/acc'); } catch (e) { notes.push('extra: not valid JSON (' + e.message + ')'); } }
   if ($('#whereGeo').checked) await new Promise(res => navigator.geolocation.getCurrentPosition(p => { est.push({ src: 'geo', lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, note: 'browser geolocation' }); res(); }, e => { notes.push('geolocation: ' + e.message); res(); }, { timeout: 8000 }));
   // fused: inverse-variance weighting of the selected estimates (country-level ones barely count)
   let fused = null;
@@ -1889,7 +1945,7 @@ async function whereRun() {
   if (usable.length) { let w = 0, la = 0, lo = 0; for (const e of usable) { const wi = 1 / (e.acc * e.acc); w += wi; la += e.lat * wi; lo += e.lon * wi; } fused = { lat: la / w, lon: lo / w, acc: Math.sqrt(1 / w) }; }
   const lines = [];
   for (const e of est) {
-    const col = WHERE_COLORS[e.src];
+    const col = WHERE_COLORS[e.src] || '#bbbbbb';
     L.circle([e.lat, e.lon], { radius: e.acc, color: col, weight: 1.5, fillColor: col, fillOpacity: 0.06 }).bindPopup(`<b>${e.src}</b> ±${(e.acc / 1e3).toFixed(0)} km<br>${esc(e.note || '')}`).addTo(whereLayer);
     L.circleMarker([e.lat, e.lon], { radius: 4, color: col, fillColor: col, fillOpacity: 1 }).addTo(whereLayer);
     lines.push(`<span style="color:${col}">●</span> <b>${e.src}</b>: ${e.lat.toFixed(3)}, ${e.lon.toFixed(3)} ±${(e.acc / 1e3).toFixed(0)} km${e.n ? ` (${e.n} source${e.n > 1 ? 's' : ''})` : ''}${e.note ? ` · ${esc(e.note)}` : ''}`);

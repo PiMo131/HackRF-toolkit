@@ -142,7 +142,7 @@ patents" (RadioReference DSD wiki); Debian excludes it. Relevant unencrypted DMR
 1. **WBFM stereo + RDS**: validates IQ → decimate → demod → AudioWorklet; port no-sdr (MIT). *(built 2026-10-28, own JS DSP rather than a port; RDS verified on synthetic signal, too weak on air here)*
 2. **NFM/AM channel-bank scanner** (PMR446, amateur; airband/marine opt-in): same chain plus
    squelch/CTCSS; wideband capture makes it a true parallel scanner. *(built 2026-10-28, CTCSS 2026-10-29)*
-3. **Live P2000/FLEX feed**: C glue to stream into the existing multimon-ng WASM. *(built 2026-10-29: option 2, `web/tools/src/mm_stream.c`; P2000 pages decode live from Antwerp)*
+3. **Live P2000/FLEX feed**: C glue to stream into the existing multimon-ng WASM. *(built 2026-10-29: option 2, `web/tools/src/mm_stream.c`; P2000 pages decode live from Willemstad NL)*
 4. **DMR voice (amateur)**: only if the mbelib patent risk is accepted.
 5. **DAB+**: Emscripten port of DAB-Radio (MIT) + FAAD2-WASM (GPL); weeks.
 6. **TETRA**: never.
