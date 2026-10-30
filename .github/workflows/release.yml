@@ -31,4 +31,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           notes="Voortgangsrapport passieve RF-lokalisatie ${{ github.ref_name }} (PDF bijgevoegd). Status en volgende stappen: STATUS.md; notities: docs/notes-*.md."
-          gh release create "${{ github.ref_name }}" dist/*.pdf --title "${{ github.ref_name }}" --notes "$notes" --verify-tag
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            gh release upload "${{ github.ref_name }}" dist/*.pdf --clobber      # tag opnieuw gezet: alleen de PDF vervangen
+          else
+            gh release create "${{ github.ref_name }}" dist/*.pdf --title "${{ github.ref_name }}" --notes "$notes" --verify-tag
+          fi
