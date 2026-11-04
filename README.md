@@ -32,6 +32,7 @@ SigMF files works in any browser; nothing is uploaded.
 | ![Offline analysis](docs/screenshots/offline-2290.jpg) **Offline IQ:** a 120 MB SigMF file analysed in the browser in 0.7 s | ![Offline zoom](docs/screenshots/offline-zoom.jpg) **Offline, zoomed:** box-select on the waterfall re-analyses just that time span |
 | ![Audio tab](docs/screenshots/audio-fm-rds.jpg) **Audio:** live FM stereo with RDS (station name, PI, programme type, RadioText), NFM and AM, band scan for stations; plays recordings too | ![Channel scanner](docs/screenshots/scanner-pmr446.jpg) **Scanner:** squelch on every channel of the band at once, auto-lock on the active one, hold, priority, lockouts and a log of transmissions |
 | ![Live P2000 feed](docs/screenshots/audio-p2000.jpg) **Pager feed:** the NFM channel streams into multimon-ng (WebAssembly); live P2000 FLEX pages appear as they arrive, with filter and CSV export | ![Satellites tab](docs/screenshots/satellites.jpg) **Satellites:** passes for the next 24 h from bundled TLEs; Track follows the downlink with Doppler correction |
+| ![Echo tab](docs/screenshots/echo.jpg) **Echo:** adaptive DMR-like scan — fast energy survey, focused dwells that confirm DMR-like 4FSK, a compact-IQ fragment library, offline replay, and a lab-only RF transmitter behind an empty-by-default allowlist | |
 
 The **Audio** tab is a receiver: FM broadcast in stereo with RDS, narrowband FM (PMR446, amateur)
 and AM, with presets, squelch, a band scan that lists the stations it hears, and playback of any
@@ -64,12 +65,61 @@ FM repeater, SO-50, AO-91, RS-44, Meteor-M2 LRPT and ORBCOMM, and **Track** tune
 downlink with the Doppler shift corrected every second. The DSP (`web/audio-worker.js`) is plain JavaScript in a
 worker and uses about a quarter of one core per VFO at 10 Msps; audio goes out through an AudioWorklet.
 
+The **Echo** tab is an adaptive DMR-like scanner with a compact-IQ fragment library and a lab-only
+transmitter. See **[Echo](docs/echo.md)** for the full design; in short:
+
+* **Receive profiles** are a checkbox multiselect (several amateur/PMR446/professional presets, editable,
+  plus custom ranges and imported channel-list JSON), merged into one interval union and firmware-sweep plan.
+* An **adaptive scan engine** (in a Web Worker, `web/echo-worker.js`) runs a fast **energy survey** (the
+  existing firmware sweep) over the selected ranges, ranks candidates (SNR, repeat hits, recency, DMR history,
+  spur penalty), and **retunes** to the best ones for a **focused dwell** that channelises to 50 ksps and
+  classifies **activity / unknown digital / possible DMR / confirmed DMR** from 4FSK symbol structure and the
+  ETSI sync words (physical-layer only — no voice decode, no decryption). Candidates are **hot / warm / cold**
+  with adaptive revisit times; a full background survey is forced periodically so quiet bands are never starved.
+  Coverage, last-visit, estimated revisit and time missed while recording/transmitting are shown honestly
+  (one HackRF can't watch separate windows at once; a survey is energy only — no 100 % coverage claim).
+* On a confirmed detection it records a **compact complex IQ** fragment (pre-roll where the channel was really
+  being received, 300 ms default; hang-time 500 ms; 30 s default cap, 1–60 s; `ci8` at 50 ksps ≈ 3 MB/30 s)
+  into an **IndexedDB library** (view, rename, notes, delete, quota, **SigMF** import/export with `rfscan:echo_*`
+  fields).
+* **Play** and **Auto Echo** replay fragments **offline** through the same analysis chain — **no RF** (banner
+  `OFFLINE REPLAY — NO RF TRANSMISSION`), repeats 1–10, bounded queue.
+* **Lab TX** is a real RF transmit pipeline (resample 50 ksps → a HackRF TX rate, anti-imaging filter, LO
+  offset, limiter, paced WebUSB streaming on the TX endpoint from the live descriptor, unconditional `MODE.OFF`
+  on stop/fault/disconnect). It is **off by default** and boxed in: a **separate, empty-by-default allowlist**
+  supplies the TX centre frequency (never a scanned frequency, never from Auto Echo); only **synthetic** or
+  **owned lab-recording** fragments transmit; a two-step **Enable + Arm** with expiry, bounded duration, gain cap
+  and hard timeout; one transmission at a time; Emergency Stop. See the Lab TX section below for the hardware
+  verification protocol. **Status: implemented and tested with synthetic IQ + USB mocks; not hardware-verified.**
+
 Research notes: `docs/research-live-audio.md` (audio modes, DAB+, legal), `docs/research-features-2026-10-29.md`
 (comparison with other browser SDRs, satellites), findings in `docs/findings.md`.
 
 Source is in `web/`. `web/build.sh` refreshes the Python copy in `web/py` after changes to
 `rfscan/`; `web/build_tools.sh` rebuilds the two WebAssembly tools. GitHub Pages deploys `web/`
 on every push to `main` (`.github/workflows/pages.yml`).
+
+The Echo tab is `web/echo-*.js` (pure-DSP/logic modules usable from node), `web/echo-worker.js`
+(the scan engine in a worker) and `web/echo.js` (the UI controller and the device/Lab-TX plumbing).
+Its tests are `tests/web/echo_*.js` (deterministic synthetic IQ + a mock HackRF; `tests/web/echo_run.sh`
+runs them, and `.github/workflows/echo-tests.yml` runs them in CI, including a headless-browser
+integration test that drives the whole pipeline end to end without hardware).
+
+### Lab TX — hardware verification protocol
+
+Lab TX is **implemented but not hardware-verified**. Before it may be marked `hardware-verified`:
+
+1. Feed synthetic 4FSK/DMR-like IQ and confirm the exact fragment and the virtual repeats offline.
+2. Put one authorised bench frequency in the (empty-by-default) allowlist and connect a **50 Ω dummy
+   load / attenuator** or a **wired second receiver**, or a demonstrably shielded enclosure. A Faraday
+   cage also keeps outside signals out, so for an RX+TX integration test the source must be inside the
+   cage or wired in — "sitting far away" is not a shielding test. A checkbox is not physical proof.
+3. Measure the outgoing channel, sample rate, centre, spectrum, **image suppression** and power with a
+   **second receiver or spectrum analyser**; test Stop, USB loss and the fail-safe `RF OFF`.
+4. Only then mark Lab TX `hardware-verified` in the README/STATUS. Received third-party DMR or any real
+   communication is **never** a transmit input, and the TX frequency is never taken from the scan.
+
+Check your own licence conditions before transmitting (NL: <https://www.rdi.nl>).
 
 ## Releases and the progress report
 

@@ -52,6 +52,22 @@ td button{padding:1px 8px;font-size:12px}
   td.mono{font-variant-numeric:tabular-nums}
   td.page-ambu{color:#ffb380}td.page-fire{color:#ff7a7a}td.page-test{color:#8a93a3}
   #aPages td:last-child{white-space:normal;max-width:700px}
+  .echo-banner{display:inline-block;padding:3px 10px;border-radius:4px;font-weight:600;font-size:11px;letter-spacing:.04em;background:#163a2a;color:#7ee6ac;border:1px solid #1f5f3a;margin-bottom:10px}
+  .echo-banner.tx{background:#4a1d1d;color:#ffb0b0;border-color:#8a2f2f}
+  .popover{position:absolute;z-index:20;top:100%;left:0;margin-top:4px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px;min-width:340px;max-height:420px;overflow:auto;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+  .popover .pf{display:flex;align-items:flex-start;gap:6px;padding:4px 2px;border-bottom:1px solid #20262f}
+  .popover .pf:last-child{border-bottom:none}
+  .popover .pf .nm{flex:1}.popover .pf .rg{color:var(--mute);font-size:11px}
+  .popover .pf button{padding:1px 6px;font-size:11px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:#1b2838;border:1px solid #2f5690;border-radius:12px;padding:2px 6px 2px 10px;font-size:11px}
+  .chip button{background:none;border:none;color:var(--mute);padding:0 2px;cursor:pointer;font-size:13px}
+  .echo-tx-state{display:inline-block;padding:3px 10px;border-radius:4px;font-weight:600;font-size:11px;background:#2a2320;color:#d0d5de;border:1px solid var(--line);margin:6px 0}
+  .echo-tx-state.armed{background:#4a3a16;color:#ffd98a;border-color:#8a6a2f}
+  .echo-tx-state.tx{background:#4a1d1d;color:#ffb0b0;border-color:#8a2f2f}
+  .echo-tx-state.fault{background:#4a1d1d;color:#ff8a8a;border-color:#8a2f2f}
+  button.bad-btn{background:#8a2f2f;border-color:#a33}
+  .tier-hot{color:#ff8a5c}.tier-warm{color:#ffd98a}.tier-cold{color:#8b94a5}
 </style>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -79,6 +95,7 @@ td button{padding:1px 8px;font-size:12px}
   <button data-tab="decodes">Decodes <span id="decCount"></span></button>
   <button data-tab="map">Map <span id="mapCount"></span></button>
   <button data-tab="sat">Satellites</button>
+  <button data-tab="echo">Echo <span id="echoCount"></span></button>
 </nav>
 
 <section id="live" class="on">
@@ -254,6 +271,80 @@ td button{padding:1px 8px;font-size:12px}
   <details style="margin-top:8px"><summary class="note">Orbital elements: paste fresh TLEs here if the bundled set is old</summary><textarea id="sTleText" rows="6" style="width:100%;font-family:monospace;font-size:11px"></textarea><button id="sTleUse" class="sec">Use these</button></details>
 </section>
 
+<section id="echo">
+  <div class="echo-banner" id="echoBanner">OFFLINE REPLAY — NO RF TRANSMISSION</div>
+  <div class="row">
+    <div style="position:relative">
+      <button id="echoProfBtn" class="sec">Frequency ranges (0 selected) ▾</button>
+      <div id="echoProfPop" class="popover" style="display:none"></div>
+    </div>
+    <label>Scan mode<select id="echoMode"><option value="adaptive">Fast adaptive</option><option value="thorough">Thorough</option><option value="watchlist">Fixed watchlist</option></select></label>
+    <label>Detection<select id="echoDetect"><option value="any">All channel activity</option><option value="likely" selected>DMR likely</option><option value="confirmed">DMR confirmed</option></select></label>
+    <label>Threshold dB<input id="echoThr" type="number" min="3" max="40" value="10" style="width:64px"></label>
+    <label>Max clip s<input id="echoMax" type="number" min="1" max="60" value="30" style="width:64px"></label>
+    <button id="echoStart" disabled>Start scanning</button>
+  </div>
+  <div class="row" style="margin-top:-4px">
+    <div id="echoChips" class="chips"></div>
+  </div>
+  <div class="readout" id="echoStatus"><span class="note">Pick one or more receive ranges, then Start. A fast energy survey finds candidates; focused dwells confirm DMR-like activity and record compact IQ. Nothing is transmitted.</span></div>
+  <div class="hint" id="echoStateLine"></div>
+  <div style="display:flex;gap:16px;flex-wrap:wrap">
+    <div style="flex:1;min-width:320px">
+      <h3 style="font-size:13px;margin:8px 0 4px">Candidates</h3>
+      <div class="tablewrap" style="max-height:220px"><table id="echoCand"><thead><tr><th>Channel</th><th>Tier</th><th>Label</th><th>SNR</th><th>Dwells</th><th>Revisit</th><th>Score</th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div style="flex:1;min-width:320px">
+      <h3 style="font-size:13px;margin:8px 0 4px">Coverage <span class="note">(survey = energy only; no 100% claim)</span></h3>
+      <div class="tablewrap" style="max-height:220px"><table id="echoCov"><thead><tr><th>Profile</th><th>Last visit</th><th>Revisit</th><th>Missed (rec/TX)</th><th>Note</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+
+  <h3 style="font-size:13px;margin:14px 0 4px">Fragment library <span id="echoLibStat" class="note"></span></h3>
+  <div class="row">
+    <button id="echoPlay" class="sec" disabled>Play ▸</button>
+    <button id="echoStopPlay" class="sec" disabled>Stop</button>
+    <label>Repeat<input id="echoRepeat" type="number" min="1" max="10" value="2" style="width:52px"></label>
+    <label>Pause ms<input id="echoPause" type="number" min="0" max="5000" step="100" value="500" style="width:70px"></label>
+    <label class="chk"><input id="echoAuto" type="checkbox">Auto Echo (offline replay of new clips)</label>
+    <button id="echoExport" class="sec" disabled>Export SigMF</button>
+    <button id="echoDelete" class="sec" disabled>Delete</button>
+    <label title="import a .sigmf-meta + .sigmf-data pair">Import<input id="echoImport" type="file" multiple style="width:150px"></label>
+    <button id="echoQuota" class="sec">Quota…</button>
+  </div>
+  <div class="tablewrap" style="max-height:260px"><table id="echoLib"><thead><tr><th><input id="echoAll" type="checkbox" title="select all"></th><th>Name</th><th>Channel</th><th>Label</th><th>Source</th><th>UTC</th><th>Dur</th><th>Size</th><th>Flags</th></tr></thead><tbody></tbody></table></div>
+  <div class="plotwrap" id="echoViewWrap" style="display:none;margin-top:8px"><canvas id="echoView" class="wf" style="height:220px"></canvas><div class="hover"></div></div>
+  <div id="echoViewMeta" class="note" style="margin-top:4px"></div>
+  <div id="echoReplayStat" class="readout"></div>
+
+  <details id="echoLabWrap" style="margin-top:16px;border:1px solid var(--line);border-radius:6px;padding:8px">
+    <summary style="cursor:pointer;color:var(--acc2)">⚠ Lab TX — real RF transmit (off by default, lab-only)</summary>
+    <p class="note" style="max-width:860px">Lab TX transmits <b>your own synthetic or lab-recorded</b> fragments to a frequency you put on the <b>separate, empty-by-default allowlist</b> below — never to a frequency discovered by the scan, and never from Auto Echo without this explicit arm. One transmission at a time, bounded duration, hard timeout, and RF off after every transmission, fault or disconnect. A dummy load / attenuator / shielded setup is required; the checkbox records your confirmation but <b>is not physical proof</b>. See the README for the verification protocol and your local licence conditions.</p>
+    <div class="echo-tx-state" id="echoTxState">RF OFF</div>
+    <div class="row">
+      <label class="chk"><input id="echoTxEnable" type="checkbox">Enable Lab TX</label>
+      <label class="chk"><input id="echoTxVerified" type="checkbox">I confirm a 50 Ω dummy load / attenuator or shielded test setup</label>
+    </div>
+    <div class="row">
+      <label>Allowlist freq MHz<input id="echoTxAddFreq" type="number" step="0.000125" style="width:120px"></label>
+      <label>Label<input id="echoTxAddLabel" type="text" style="width:140px"></label>
+      <label>Max TXVGA dB<input id="echoTxAddGain" type="number" min="0" max="47" value="20" style="width:70px"></label>
+      <button id="echoTxAdd" class="sec">Add to allowlist</button>
+    </div>
+    <div class="tablewrap" style="max-height:140px"><table id="echoTxList"><thead><tr><th>Allowlisted TX frequency</th><th>Label</th><th>Max gain</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div class="row" style="margin-top:8px">
+      <label>Arm frequency<select id="echoTxArmFreq" style="width:160px"></select></label>
+      <label>TXVGA dB<input id="echoTxGain" type="number" min="0" max="47" value="0" style="width:64px"></label>
+      <label>Max clip s<input id="echoTxMaxClip" type="number" min="1" max="10" value="5" style="width:64px"></label>
+      <label>Max repeats<input id="echoTxMaxRep" type="number" min="1" max="5" value="1" style="width:64px"></label>
+      <button id="echoTxArm" class="sec" disabled>Arm (2-step)</button>
+      <button id="echoTxSend" disabled>Transmit selected fragment</button>
+      <button id="echoTxStop" class="bad-btn">Emergency Stop</button>
+    </div>
+    <div id="echoTxLog" class="note" style="max-height:140px;overflow:auto;font-family:monospace;font-size:11px"></div>
+  </details>
+</section>
+
 <section id="decodes">
   <div class="readout" id="decStatus">Decoders run the rfscan Python code in the browser (Pyodide). The first run downloads ~30 MB.</div>
   <div class="row"><button id="decClear" class="sec">Clear</button><button id="decReset" class="sec" disabled>Reset stuck decode</button></div>
@@ -264,6 +355,11 @@ td button{padding:1px 8px;font-size:12px}
 </section>
 
 <script src="bands.js"></script>
+<script src="echo-dsp.js"></script>
+<script src="echo-profiles.js"></script>
+<script src="echo-storage.js"></script>
+<script src="echo-replay.js"></script>
+<script src="echo-lab-tx.js"></script>
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
@@ -352,8 +448,8 @@ function percentile(arr, p) {
 }
 
 // ---------------------------------------------------------------- HackRF over WebUSB
-const REQ = { MODE: 1, SAMPLE_RATE: 6, BBF: 7, BOARD_ID: 14, VERSION: 15, FREQ: 16, AMP: 17, LNA: 19, VGA: 20, ANT: 23, INIT_SWEEP: 26, CLKOUT: 32, CLKIN_STATUS: 44, BOARD_REV: 45, TEMPERATURE: 62 };
-const MODE = { OFF: 0, RX: 1, SWEEP: 5 };
+const REQ = { MODE: 1, SAMPLE_RATE: 6, BBF: 7, BOARD_ID: 14, VERSION: 15, FREQ: 16, AMP: 17, LNA: 19, VGA: 20, SET_TXVGA_GAIN: 21, ANT: 23, INIT_SWEEP: 26, CLKOUT: 32, CLKIN_STATUS: 44, BOARD_REV: 45, TEMPERATURE: 62 };
+const MODE = { OFF: 0, RX: 1, TX: 2, SWEEP: 5 };
 const BOARDS = { 0: 'Jellybean', 1: 'Jawbreaker', 2: 'HackRF One (OG)', 3: 'rad1o', 4: 'HackRF One', 5: 'HackRF Pro' };
 const BBF_TABLE = [1.75e6, 2.5e6, 3.5e6, 5e6, 5.5e6, 6e6, 7e6, 8e6, 9e6, 10e6, 12e6, 14e6, 15e6, 20e6, 24e6, 28e6];
 const XFER = 262144, READERS = 6;
@@ -458,6 +554,7 @@ async function attach(dev) {
     $('#devinfo').textContent = `${i.board} · firmware ${i.version} · API ${i.api} · ${(i.serial || '').slice(-8)}`;
     $('#devctl').style.display = 'inline-flex'; $('#dBias').checked = false; devPoll();
     for (const b of ['#lStart', '#sStart', '#lDecode', '#aStart', '#aScan']) $(b).disabled = false;
+    if (window.Echo) Echo.onAttach(h);
     setStatus('ready', 'ok');
   } catch (e) {
     setStatus('open failed: ' + e.message, 'bad');
@@ -470,6 +567,7 @@ function onDeviceLost(e) {
   $('#devinfo').textContent = 'no device';
   for (const b of ['#lStart', '#sStart', '#recBtn', '#lDecode', '#aStart', '#aScan']) $(b).disabled = true;
   if (audio.running && audio.source === 'device') audioStop();
+  if (window.Echo) Echo.onDeviceLost();
   if (dec.busy) decStatus('device disconnected during decode; reconnect and try again', 'bad');
   $('#lStart').textContent = 'Start'; $('#sStart').textContent = 'Start sweep';
   setStatus('device disconnected', 'bad');
@@ -649,6 +747,7 @@ async function liveStart() {
   if (!hrf) return;
   if (scan.running) await scanStop();
   if (audio.running && audio.source === 'device') await audioStop();
+  if (window.Echo) await Echo.releaseDevice();
   liveParams();
   await hrf.setMode(MODE.OFF);
   await hrf.setSampleRate(live.rate);
@@ -809,6 +908,7 @@ async function scanStart() {
   if (!hrf) return;
   if (live.running) await liveStop();
   if (audio.running && audio.source === 'device') await audioStop();
+  if (window.Echo) await Echo.releaseDevice();
   scanInit();
   hrf.onData = null;
   await hrf.setMode(MODE.OFF);
@@ -1526,6 +1626,7 @@ async function audioStart(fileSrc) {
     if (!hrf) { audioMsg('connect the HackRF first', 'bad'); return; }
     if (scan.running) await scanStop();
     if (live.running) await liveStop();
+    if (window.Echo) await Echo.releaseDevice();
     audio.source = 'device'; audio.rate = AUDIO_RATE_DEV; audio.center = audioCentreFor(f);
     await hrf.setMode(MODE.OFF); hrf.onData = null;
     await hrf.setSampleRate(audio.rate); await hrf.setFreq(audio.center);
@@ -2102,9 +2203,11 @@ function showTab(id) {
   if (id === 'scan') scanDraw(!scan.running);
   if (id === 'decodes') decWorker().catch(() => {});
   if (id === 'audio') audioDraw();
+  if (id === 'echo' && window.Echo) Echo.onShow();
 }
 for (const b of document.querySelectorAll('nav button')) b.onclick = () => showTab(b.dataset.tab);
 window.addEventListener('resize', () => { offDraw(); scanDraw(!scan.running); });
 </script>
+<script src="echo.js"></script>
 </body>
 </html>

@@ -1,0 +1,26 @@
+# Echo tab: run the deterministic unit/integration tests (synthetic IQ + USB mocks) on every push/PR.
+name: echo-tests
+on:
+  push:
+    paths: ['web/echo*.js', 'tests/web/echo_*.js', '.github/workflows/echo-tests.yml']
+  pull_request:
+    paths: ['web/echo*.js', 'tests/web/echo_*.js', '.github/workflows/echo-tests.yml']
+  workflow_dispatch:
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Echo node tests (profiles, dsp, capture, scheduler, storage, lab-tx)
+        run: |
+          for f in profiles dsp capture scheduler storage lab_tx; do
+            echo "=== echo_$f ==="
+            node "tests/web/echo_$f.js"
+          done
+      - name: Install Playwright Chromium
+        run: npm i -D playwright@1.49.1 && npx playwright install --with-deps chromium
+      - name: Echo browser integration test
+        run: node tests/web/echo_browser.js

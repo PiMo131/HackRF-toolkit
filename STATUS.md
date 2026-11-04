@@ -206,3 +206,42 @@ Receiver is in **Willemstad NL (≈51.69N 4.44E)**, which the user confirmed thi
   colour top right on every page (< 4.5 cm, `docs/report/logo.svg` = the official 'Profile Equipment - kleur.svg'),
   footer with document name and 'Pagina X van Y' in 8 pt grey, no dark blocks or effects. `.github/workflows/release.yml` builds it on every `v*` tag and creates the GitHub release with the PDF.
   First release: v0.0.3.
+
+## Echo tab — adaptive DMR-like scan + lab TX (2026-11-04, web)
+Full design and module map: `docs/echo.md`. Built in `web/echo-*.js` (+ `echo-worker.js`, `echo.js`), wired into
+`web/index.html` as a new **Echo** tab, with a single-owner guard so Live/Scan/Audio/Echo never claim the WebUSB
+device at once. Pure-DSP/logic modules also run under node for tests.
+* **Receive profiles** (`echo-profiles.js`): checkbox multiselect (amateur VHF/UHF, PMR446, professional VHF/UHF
+  presets; editable; custom ranges; channel-list JSON import with raster/bounds/dup validation), merged into a
+  sorted interval union that keeps every contributing profile id, a ≤10-range firmware-sweep plan (whole 20 MHz
+  steps) and RX-window planning that keeps signals off DC and the band edges. Versioned `localStorage`.
+* **Adaptive scan** (`echo-scheduler.js` + `echo-capture.js`, driven in `echo-worker.js`): energy survey (existing
+  firmware sweep, several passes) → candidate ranking (SNR, repeat hits, recency, DMR history, spur/inconclusive/
+  always-on penalties; jitter-merged) → focused dwell (RX at 8 Msps, channelise to 50 ksps, classify) → hot/warm/
+  cold revisits with a forced background survey so quiet bands aren't starved. Coverage/last-visit/estimated-revisit/
+  missed-while-recording/missed-while-TX shown honestly (survey = energy only, explicit no-100%-coverage note).
+* **Classifier** (`echo-dsp.js` `classifyDmrLike`): activity / unknown digital / possible DMR / confirmed DMR from
+  duty/SNR, a symbol-rate line, 4-level fit, ~1944 Hz deviation and ETSI sync words (normal + inverted). Physical
+  layer only — no voice decode, no decryption. Confirmed on synthetic signals down to ~9 dB SNR; FM/noise/2-FSK not
+  mislabelled; adjacent-channel not confused.
+* **Capture + library**: pre-roll (where the channel was really received), 2-block debounce, 500 ms hang, 30 s
+  default cap (1–60 s) with truncation+split, `late_lock`. `ci8` at 50 ksps ≈ 100 kB/s → 3 MB/30 s. IndexedDB
+  library (`echo-storage.js`): view/rename/notes/delete, quota with a clear error (no silent drop), FNV/SHA integrity,
+  SigMF import/export with `rfscan:echo_*` (bit-exact round trip; imports marked `source=import` so they can't be TX'd).
+* **Replay** (`echo-replay.js`): offline virtual replay through the analysis chain — no RF. Repeats 1–10, pause,
+  bounded queue, Stop/Emergency Stop. Auto Echo (off by default) replays new clips offline.
+* **Lab TX** (`echo-lab-tx.js`): a real TX pipeline (resample 50 ksps → HackRF TX rate, anti-imaging filter, LO
+  offset, limiter, int8, paced WebUSB on the TX endpoint read from the live descriptor; unconditional `MODE.OFF` on
+  stop/fault/disconnect). Off by default; TX centre only from a **separate, empty-by-default allowlist** (never a
+  scanned frequency, never from Auto Echo); only synthetic/owned-lab sources; two-step Enable+Arm with expiry, gain
+  cap, bounded duration, hard timeout, one-at-a-time, cool-down, Emergency Stop, re-arm after any fault.
+  **Status: implemented and tested with synthetic IQ + USB mocks; NOT hardware-verified** (verification protocol in
+  the README). Live gain/spectrum/image/power measurement with a dummy load + second receiver/analyser is the next
+  step before it may be marked `hardware-verified`.
+* **Tests** (`tests/web/echo_*.js`, `tests/web/echo_run.sh`, `.github/workflows/echo-tests.yml`): 66 node assertions
+  across profiles/DSP/capture/scheduler/storage/lab-tx, incl. the spec's scheduler scenario and every TX safety gate,
+  plus a headless-Chromium integration test that drives the real page with a mock HackRF (synthetic sweep+RX) from
+  Start → survey → focused dwell → a confirmed-DMR clip → Auto Echo replay with **zero** WebUSB TX bytes. All green.
+* **Not yet on hardware:** the whole chain is validated against synthetic IQ and USB mocks; it has not been run
+  against a real HackRF Pro or real DMR activity. Lab TX has never keyed a real transmitter. Public DMR-IQ sample
+  benchmarking and the 100/50/25 ksps rate decision are open (50 ksps is a hypothesis).
